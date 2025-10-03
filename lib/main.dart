@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:buzzify/common/app_colors.dart';
+import 'package:buzzify/pages/splash.dart';
 
 void main() {
   runApp(const MainApp());
@@ -9,12 +11,16 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: "Buzzify",
+      theme: ThemeData(
+        primaryColor: AppColors.primary,
+        scaffoldBackgroundColor: AppColors.darkBackground,
+        brightness: Brightness.dark,
+        fontFamily: 'Roboto',
+      ), 
+      home: const SplashPage(),
     );
   }
 }

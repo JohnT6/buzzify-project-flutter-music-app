@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_svg: ^2.2.1
 
 dev_dependencies:
   flutter_test:
@@ -17,3 +18,23 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+        - assets/fonts/
+        - assets/images/
+        - assets/vectors/
+        - assets/music/
+
+  fonts:
+        - family: Roboto
+          fonts:
+              - asset: assets/fonts/Roboto-Black.ttf
+                weight: 900
+              - asset: assets/fonts/Roboto-Bold.ttf
+                weight: 700
+              - asset: assets/fonts/Roboto-Medium.ttf
+                weight: 500
+              - asset: assets/fonts/Roboto-Regular.ttf
+                weight: 400
+              - asset: assets/fonts/Roboto-Light.ttf
+                weight: 300
