@@ -1,2 +1,3 @@
-# buzzify-project-flutter-music-app
-Buzzify
+# buzzify
+
+A new Flutter project.
