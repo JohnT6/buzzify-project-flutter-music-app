@@ -4,5 +4,6 @@ class AppVectors {
 
   static const String logo = '${basePath}FullLogo_Transparent${format}';
   static const String bottomPattern = '${basePath}bottom_pattern${format}';
-  static const String topPattern = '${basePath}topPattern${format}';
+  static const String topPattern = '${basePath}top_pattern${format}';
+  static const String icon_google = '${basePath}icon_google${format}';
 }
