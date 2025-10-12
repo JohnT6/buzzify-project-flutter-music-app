@@ -22,7 +22,7 @@ class _SplashPageState extends State<SplashPage> {
   }
 
 Future<void> _checkAuthStatus() async {
-  await Future.delayed(const Duration(seconds: 1));
+  await Future.delayed(const Duration(seconds: 3));
 
   if(!mounted) return;
 
