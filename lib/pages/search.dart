@@ -1,12 +1,14 @@
-import 'package:flutter/material.dart';
+// lib/pages/search.dart
+import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
+import 'package:buzzify/blocs/data/data_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
-import 'package:buzzify/mock_data.dart';
+import 'package:flutter/material.dart';
 import 'package:buzzify/pages/albums.dart';
-import 'package:buzzify/pages/play_song.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
-
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
@@ -14,13 +16,16 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _allData = [];
 
   @override
   void initState() {
     super.initState();
-    // Ban đầu, hiển thị tất cả bài hát
-    _searchResults = List.from(mockSongs);
-
+    // Lấy dữ liệu ban đầu từ DataBloc nếu đã có
+    final currentState = context.read<DataBloc>().state;
+    if (currentState is DataLoaded) {
+      _allData = [...currentState.songs, ...currentState.albums];
+    }
     _searchController.addListener(_performSearch);
   }
 
@@ -34,36 +39,15 @@ class _SearchPageState extends State<SearchPage> {
   void _performSearch() {
     final query = _searchController.text.toLowerCase();
     if (query.isEmpty) {
-      setState(() {
-        // Nếu ô tìm kiếm trống, hiển thị lại tất cả bài hát
-        _searchResults = List.from(mockSongs);
-      });
+      setState(() => _searchResults = []);
       return;
     }
-
-    // Lọc từ danh sách bài hát và album
-    final List<Map<String, dynamic>> filteredList = [];
-
-    // Lọc bài hát
-    filteredList.addAll(
-      mockSongs.where((song) {
-        final title = song['title']?.toLowerCase() ?? '';
-        final artist = song['artist']?.toLowerCase() ?? '';
-        return title.contains(query) || artist.contains(query);
-      }),
-    );
-
-    // Lọc album
-    filteredList.addAll(
-      mockAlbums.where((album) {
-        final title = album['title']?.toLowerCase() ?? '';
-        final artist = album['artist']?.toLowerCase() ?? '';
-        return title.contains(query) || artist.contains(query);
-      }),
-    );
-
     setState(() {
-      _searchResults = filteredList;
+      _searchResults = _allData.where((item) {
+        final title = item['title']?.toLowerCase() ?? '';
+        final artist = item['artists']?['name']?.toLowerCase() ?? '';
+        return title.contains(query) || artist.contains(query);
+      }).toList();
     });
   }
 
@@ -72,115 +56,82 @@ class _SearchPageState extends State<SearchPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        // Không cần AppBar vì HomePage đã có title rồi
-        toolbarHeight: 0,
+        title: const Text("Tìm kiếm"),
+        centerTitle: true,
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: Column(
-          children: [
-            // --- Ô tìm kiếm ---
-            TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Tìm kiếm bài hát, nghệ sĩ...',
-                hintStyle: TextStyle(color: Colors.grey[400]),
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppColors.darkGrey,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.0),
-                  borderSide: BorderSide.none,
+      body: BlocListener<DataBloc, DataState>(
+        listener: (context, state) {
+          if (state is DataLoaded) {
+            setState(() {
+              _allData = [...state.songs, ...state.albums];
+            });
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Column(
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Bạn muốn nghe gì?',
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(icon: const Icon(Icons.clear, color: Colors.grey), onPressed: () => _searchController.clear())
+                      : null,
+                  fillColor: AppColors.darkGrey,
+                  filled: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0), borderSide: BorderSide.none),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _searchResults.isEmpty && _searchController.text.isNotEmpty
+                    ? const Center(child: Text('Không tìm thấy kết quả.', style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final item = _searchResults[index];
+                          final isSongItem = item.containsKey('duration_seconds');
+                          final imageUrl = Supabase.instance.client.storage.from('Buzzify').getPublicUrl(item['cover_url']);
 
-            // --- Danh sách kết quả ---
-            Expanded(
-              child: _searchResults.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Không tìm thấy kết quả.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _searchResults.length,
-                      itemBuilder: (context, index) {
-                        final item = _searchResults[index];
-                        final isAlbum = item.containsKey('songs');
-
-                        return ListTile(
-                          leading: SizedBox(
-                            width: 50,
-                            height: 50,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                isAlbum ? 8.0 : 4.0,
-                              ),
-                              child: Image.asset(
-                                item['cover'],
-                                fit: BoxFit.cover,
-                              ),
+                          return ListTile(
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(isSongItem ? 4.0 : 8.0),
+                              child: Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover),
                             ),
-                          ),
-                          title: Text(item['title'] ?? 'Không có tiêu đề'),
-                          subtitle: Text(
-                            isAlbum
-                                ? 'Album • ${item['artist'] ?? 'Không rõ'}'
-                                : item['artist'] ?? 'Không rõ nghệ sĩ',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                          onTap: () {
-                            // Ẩn bàn phím khi nhấn vào kết quả
-                            FocusScope.of(context).unfocus();
-
-                            if (isAlbum) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AlbumPage(
-                                    album: item,
-                                    allSongs: mockSongs,
-                                  ),
-                                ),
-                              );
-                            } else {
-                              // Tìm vị trí của bài hát trong danh sách gốc để next/prev
-                              final originalIndex = mockSongs.indexWhere(
-                                (song) => song['file'] == item['file'],
-                              );
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PlaySongPage(
-                                    playlist: mockSongs,
-                                    initialIndex: originalIndex != -1
-                                        ? originalIndex
-                                        : 0,
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
+                            title: Text(item['title'] ?? 'Không có tiêu đề'),
+                            subtitle: Text(
+                              isSongItem
+                                ? 'Bài hát • ${item['artists']?['name'] ?? 'Không rõ'}'
+                                : 'Album • ${item['artists']?['name'] ?? 'Không rõ'}',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              if (isSongItem) {
+                                final allSongs = (context.read<DataBloc>().state as DataLoaded).songs;
+                                final originalIndex = allSongs.indexWhere((s) => s['id'] == item['id']);
+                                if (originalIndex != -1) {
+                                  context.read<AudioPlayerBloc>().add(
+                                    StartPlaying(playlist: allSongs, index: originalIndex),
+                                  );
+                                }
+                              } else {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => AlbumPage(album: item)),
+                                );
+                              }
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

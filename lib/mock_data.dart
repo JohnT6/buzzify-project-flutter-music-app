@@ -1,4 +1,4 @@
-final List<Map<String, dynamic>> mockAlbums = const [
+final List<Map<String, dynamic>> mockAlbums =  [
    { 'title': 'Album 1',
     'artist': 'Hoài Lâm',
     'cover': 'assets/images/album1.jpg',
@@ -30,7 +30,7 @@ final List<Map<String, dynamic>> mockAlbums = const [
   },
   ];
 
-  final List<Map<String, dynamic>> mockSongs = const [
+  final List<Map<String, dynamic>> mockSongs =  [
     {
       'title': 'Hoa Nở Không Màu',
       'artist': 'Hoài Lâm',
@@ -113,6 +113,20 @@ final List<Map<String, dynamic>> mockAlbums = const [
       'artist': 'Đạt Long Vinh',
       'cover': 'assets/images/song4.jpg',
       'file': 'assets/music/song4.mp3',
+      'isLiked': false,
+    },
+    {
+      'title': 'Mất kết nối',
+      'artist': 'Dương Domic',
+      'cover': 'assets/images/song5.jpg',
+      'file': 'assets/music/song5.mp3',
+      'isLiked': false,
+    },
+    {
+      'title': 'My Nigga',
+      'artist': 'YG, Jeezy, Rich Homie Quan',
+      'cover': 'assets/images/song6.jpg',
+      'file': 'assets/music/song6.mp3',
       'isLiked': false,
     },
   ];
