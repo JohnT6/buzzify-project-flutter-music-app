@@ -16,6 +16,7 @@ class _SignupOrSigninPageState extends State<SignupOrSigninPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.darkBackground,
       body: Stack(
         children: [
           Positioned(

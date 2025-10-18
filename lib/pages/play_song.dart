@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:just_audio/just_audio.dart';
@@ -21,8 +22,6 @@ String _format(Duration d) {
   final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$m:$s';
 }
-
-
 
 class _PlaySongPageState extends State<PlaySongPage> {
   Color _backgroundColor = AppColors.darkBackground;
@@ -144,26 +143,29 @@ class _PlaySongPageState extends State<PlaySongPage> {
                   const Spacer(flex: 2),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      imageUrl,
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
                       width: MediaQuery.of(context).size.width * 0.8,
                       height: MediaQuery.of(context).size.width * 0.8,
                       fit: BoxFit.cover,
-                      errorBuilder: (c, e, s) => Container(
-                        color: Colors.grey[800],
-                        child: const Icon(Icons.music_note, size: 100),
-                      ),
+                      // Widget hiển thị trong lúc chờ tải ảnh (giúp UI mượt hơn)
+                      placeholder: (context, url) =>
+                          Container(color: Colors.grey[850]),
+                      // Widget hiển thị khi có lỗi tải ảnh
+                      errorWidget: (context, url, error) =>
+                          const Icon(Icons.error),
                     ),
                   ),
                   const Spacer(flex: 3),
                   Row(
                     children: [
-                      Padding(padding: EdgeInsetsGeometry.fromLTRB(12, 0, 0, 0)),
+                      Padding(
+                        padding: EdgeInsetsGeometry.fromLTRB(12, 0, 0, 0),
+                      ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            
                             Text(
                               song['title'] ?? 'Không có tiêu đề',
                               style: const TextStyle(
@@ -343,12 +345,15 @@ class LyricsSheetContent extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(
-              Supabase.instance.client.storage
+            CachedNetworkImage(
+              imageUrl: Supabase.instance.client.storage
                   .from('Buzzify')
                   .getPublicUrl(song['cover_url'] ?? ''),
               fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => Container(color: Colors.black),
+              // Widget hiển thị trong lúc chờ tải ảnh (giúp UI mượt hơn)
+              placeholder: (context, url) => Container(color: Colors.grey[850]),
+              // Widget hiển thị khi có lỗi tải ảnh
+              errorWidget: (context, url, error) => const Icon(Icons.error),
             ),
             ClipRect(
               child: BackdropFilter(

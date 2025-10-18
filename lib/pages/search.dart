@@ -2,6 +2,7 @@
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 import 'package:buzzify/blocs/data/data_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:buzzify/pages/albums.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -101,7 +102,7 @@ class _SearchPageState extends State<SearchPage> {
                           return ListTile(
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(isSongItem ? 4.0 : 8.0),
-                              child: Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover),
+                              child: CachedNetworkImage(imageUrl: imageUrl, width: 50, height: 50, fit: BoxFit.cover),
                             ),
                             title: Text(item['title'] ?? 'Không có tiêu đề'),
                             subtitle: Text(

@@ -2,6 +2,7 @@
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 import 'package:buzzify/blocs/data/data_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:buzzify/pages/albums.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -68,7 +69,7 @@ class LibraryPage extends StatelessWidget {
         return ListTile(
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(4.0),
-            child: Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover),
+            child: CachedNetworkImage(imageUrl: imageUrl, width: 50, height: 50, fit: BoxFit.cover),
           ),
           title: Text(song['title'] ?? 'Không có tiêu đề'),
           subtitle: Text(song['artists']?['name'] ?? 'Không rõ nghệ sĩ'),
@@ -102,7 +103,7 @@ class LibraryPage extends StatelessWidget {
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8.0),
-                  child: Image.network(imageUrl, fit: BoxFit.cover, width: double.infinity),
+                  child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover, width: double.infinity),
                 ),
               ),
               const SizedBox(height: 8),

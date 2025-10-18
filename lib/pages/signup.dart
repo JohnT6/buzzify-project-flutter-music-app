@@ -1,3 +1,4 @@
+import 'package:buzzify/common/app_colors.dart';
 import 'package:buzzify/common/app_vectors.dart';
 import 'package:buzzify/supabase/auth_controller.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,7 @@ class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.darkBackground,
       appBar: CustomAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

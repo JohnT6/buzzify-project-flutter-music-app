@@ -37,3 +37,5 @@ class ToggleRepeatRequested extends AudioPlayerEvent {}
 
 // Event cho Lyrics
 class FetchLyricsRequested extends AudioPlayerEvent {}
+
+class LogoutReset extends AudioPlayerEvent {}

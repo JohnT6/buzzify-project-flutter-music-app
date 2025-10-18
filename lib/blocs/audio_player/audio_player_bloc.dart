@@ -26,6 +26,7 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     on<ToggleShuffleRequested>(_onToggleShuffle);
     on<ToggleRepeatRequested>(_onToggleRepeat);
     on<FetchLyricsRequested>(_onFetchLyrics);
+    on<LogoutReset>(_onLogoutReset);
     
     _listenToPlayerChanges();
   }
@@ -44,7 +45,7 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     await _audioPlayer.play();
     
     emit(state.copyWith(
-      currentPlaylist: event.playlist,
+      currentPlaylist: isNewPlaylist ? event.playlist : state.currentPlaylist,
       currentIndex: event.index,
       // Reset lyrics khi chuyển bài
       lyrics: [],
@@ -90,6 +91,19 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     } catch (e) {
       emit(state.copyWith(lyricsStatus: LyricsStatus.failure));
     }
+  }
+
+  Future<void> _onLogoutReset(LogoutReset event, Emitter<AudioPlayerState> emit) async {
+    // Dừng trình phát nhạc
+    await _audioPlayer.stop();
+    // Xóa hoàn toàn playlist
+    await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: []));
+
+    // Phát ra một trạng thái trống rỗng
+    emit(const AudioPlayerState());
+
+    // Quan trọng: Xóa bộ nhớ đã được HydratedBloc lưu lại
+    await clear();
   }
 
   void _listenToPlayerChanges() {

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:buzzify/supabase/auth_service.dart';
 import 'package:buzzify/pages/home.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 
 class AuthController {
   // Đăng nhập bằng Email
@@ -122,7 +124,13 @@ class AuthController {
   }
 
   static Future<void> signOut(BuildContext context) async {
+    // Lưu lại Navigator trước khi thực hiện hành động bất đồng bộ
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final audioBloc = context.read<AudioPlayerBloc>();
     try {
+// Gửi event để reset trình phát nhạc
+      audioBloc.add(LogoutReset());
+
       await AuthService.signOut();
 
       if (!context.mounted) return;
@@ -134,8 +142,9 @@ class AuthController {
         ),
       );
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const SignupOrSigninPage()),
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) =>  SignupOrSigninPage()),
+        (route) => false,
       );
     } catch (e) {
       if (!context.mounted) return;
