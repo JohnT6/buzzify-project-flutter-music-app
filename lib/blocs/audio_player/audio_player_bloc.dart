@@ -1,10 +1,12 @@
+// lib/blocs/audio_player/audio_player_bloc.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:meta/meta.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+// import 'package:supabase_flutter/supabase_flutter.dart'; // ĐÃ XÓA
 import 'package:http/http.dart' as http;
 
 part 'audio_player_event.dart';
@@ -13,7 +15,6 @@ part 'audio_player_state.dart';
 class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   
-  // Public getter để UI có thể truy cập
   AudioPlayer get player => _audioPlayer;
 
   AudioPlayerBloc() : super(const AudioPlayerState()) {
@@ -31,28 +32,48 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     _listenToPlayerChanges();
   }
 
+  // --- SỬA LỖI MINI PLAYER TẠI ĐÂY ---
   Future<void> _onStartPlaying(StartPlaying event, Emitter<AudioPlayerState> emit) async {
-    final isNewPlaylist = state.currentPlaylist != event.playlist;
-    if (isNewPlaylist) {
-      final audioSources = event.playlist.map((song) {
-        final url = Supabase.instance.client.storage.from('Buzzify').getPublicUrl(song['audio_url']);
-        return AudioSource.uri(Uri.parse(url));
-      }).toList();
-      await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: audioSources));
+    try {
+      final isNewPlaylist = state.currentPlaylist != event.playlist;
+      if (isNewPlaylist) {
+        final audioSources = event.playlist.map((song) {
+          // SỬA ĐỔI: Dùng 'url' từ Node.js (đã bao gồm token)
+          // thay vì 'audio_url' và Supabase
+          final url = song['url']; 
+          if (url == null) {
+            throw Exception('Song URL is null for song: ${song['title']}');
+          }
+          return AudioSource.uri(Uri.parse(url));
+        }).toList();
+
+        // Nếu danh sách rỗng, không làm gì cả
+        if (audioSources.isEmpty) return;
+
+        await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: audioSources));
+      }
+      
+      await _audioPlayer.seek(Duration.zero, index: event.index);
+      await _audioPlayer.play(); // <-- BÂY GIỜ DÒNG NÀY SẼ CHẠY
+      
+      // BÂY GIỜ DÒNG NÀY SẼ CHẠY -> HIỆN MINI PLAYER
+      emit(state.copyWith(
+        currentPlaylist: isNewPlaylist ? event.playlist : state.currentPlaylist,
+        currentIndex: event.index,
+        // --- SỬA ĐỔI CHỖ NÀY ---
+        playlistTitle: event.playlistTitle ?? 'Danh sách bài hát', // <-- LƯU TÊN PLAYLIST
+        contextId: event.contextId, // <-- LƯU CONTEXT ID TẠI ĐÂY
+        // ---
+        lyrics: [],
+        lyricsStatus: LyricsStatus.initial, 
+        currentLyricIndex: -1,
+      ));
+    } catch (e) {
+      print('LỖI _onStartPlaying: $e');
+      // Xử lý lỗi (ví dụ: phát ra state lỗi)
     }
-    
-    await _audioPlayer.seek(Duration.zero, index: event.index);
-    await _audioPlayer.play();
-    
-    emit(state.copyWith(
-      currentPlaylist: isNewPlaylist ? event.playlist : state.currentPlaylist,
-      currentIndex: event.index,
-      // Reset lyrics khi chuyển bài
-      lyrics: [],
-      lyricsStatus: LyricsStatus.initial, 
-      currentLyricIndex: -1,
-    ));
   }
+  // --- KẾT THÚC SỬA LỖI ---
   
   void _onToggleShuffle(ToggleShuffleRequested event, Emitter<AudioPlayerState> emit) {
     final isEnabled = !_audioPlayer.shuffleModeEnabled;
@@ -67,14 +88,25 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     _audioPlayer.setLoopMode(nextMode);
   }
 
+  // --- HÀM SỬA LỖI LYRICS ---
   Future<void> _onFetchLyrics(FetchLyricsRequested event, Emitter<AudioPlayerState> emit) async {
     if (state.currentSong == null) return;
     emit(state.copyWith(lyricsStatus: LyricsStatus.loading));
+    
     try {
       final song = state.currentSong!;
+      
       final artistName = Uri.encodeComponent(song['artists']?['name'] ?? '');
       final trackName = Uri.encodeComponent(song['title'] ?? '');
-      final url = Uri.parse('https://lrclib.net/api/get?artist_name=$artistName&track_name=$trackName');
+      
+      // Lấy thêm 'album_name' và 'duration_seconds' (từ mapper)
+      final albumName = Uri.encodeComponent(song['album_name'] ?? '');
+      // final duration = (song['duration_seconds'] ?? 0).toString();
+
+      final url = Uri.parse(
+        'https://lrclib.net/api/get?artist_name=$artistName&track_name=$trackName&album_name=$albumName'
+      );
+      
       final response = await http.get(url);
       
       if (response.statusCode == 200) {
@@ -92,17 +124,12 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
       emit(state.copyWith(lyricsStatus: LyricsStatus.failure));
     }
   }
+  // --- KẾT THÚC SỬA LỖI LYRICS ---
 
   Future<void> _onLogoutReset(LogoutReset event, Emitter<AudioPlayerState> emit) async {
-    // Dừng trình phát nhạc
     await _audioPlayer.stop();
-    // Xóa hoàn toàn playlist
     await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: []));
-
-    // Phát ra một trạng thái trống rỗng
     emit(const AudioPlayerState());
-
-    // Quan trọng: Xóa bộ nhớ đã được HydratedBloc lưu lại
     await clear();
   }
 
@@ -128,6 +155,8 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     _audioPlayer.currentIndexStream.listen((index) {
       if (!isClosed && index != null) {
         emit(state.copyWith(currentIndex: index, lyrics: [], lyricsStatus: LyricsStatus.initial, currentLyricIndex: -1));
+        // Tự động tìm lyrics mới khi chuyển bài
+        add(FetchLyricsRequested());
       }
     });
 
@@ -168,7 +197,8 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
       final storedState = AudioPlayerState.fromJson(json);
       if (storedState.currentPlaylist.isNotEmpty) {
         final audioSources = storedState.currentPlaylist.map((song) {
-          final url = Supabase.instance.client.storage.from('Buzzify').getPublicUrl(song['audio_url']);
+          // SỬA ĐỔI: Dùng 'url' từ Node.js
+          final url = song['url'];
           return AudioSource.uri(Uri.parse(url));
         }).toList();
         _audioPlayer.setAudioSource(

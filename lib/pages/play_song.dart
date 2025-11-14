@@ -7,8 +7,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:buzzify/common/formatters.dart';
+// import 'package:supabase_flutter/supabase_flutter.dart'; // Đã xóa
+import 'package:buzzify/common/formatters.dart'; // <-- IMPORT FORMATTER
 
 class PlaySongPage extends StatefulWidget {
   const PlaySongPage({super.key});
@@ -35,9 +35,8 @@ class _PlaySongPageState extends State<PlaySongPage> {
 
   Future<void> _updateBackgroundColor(String? coverUrl) async {
     if (coverUrl == null || !mounted) return;
-    final publicUrl = Supabase.instance.client.storage
-        .from('Buzzify')
-        .getPublicUrl(coverUrl);
+    // Dùng coverUrl trực tiếp
+    final publicUrl = coverUrl;
     try {
       final palette = await PaletteGenerator.fromImageProvider(
         NetworkImage(publicUrl),
@@ -49,7 +48,7 @@ class _PlaySongPageState extends State<PlaySongPage> {
         );
       }
     } catch (e) {
-      // Bỏ qua lỗi nếu không tải được ảnh để lấy màu
+      // Bỏ qua lỗi
     }
   }
 
@@ -60,7 +59,6 @@ class _PlaySongPageState extends State<PlaySongPage> {
 
   void _showLyricsDialog(BuildContext pageContext) {
     final audioBloc = pageContext.read<AudioPlayerBloc>();
-    // Gửi event yêu cầu tải lyrics nếu chưa có hoặc bị lỗi
     if (audioBloc.state.lyricsStatus == LyricsStatus.initial ||
         audioBloc.state.lyricsStatus == LyricsStatus.failure) {
       audioBloc.add(FetchLyricsRequested());
@@ -72,7 +70,6 @@ class _PlaySongPageState extends State<PlaySongPage> {
       backgroundColor: Colors.transparent,
       useRootNavigator: true,
       builder: (_) {
-        // Cung cấp lại BLoC cho modal để nó có thể lắng nghe
         return BlocProvider.value(
           value: audioBloc,
           child: const LyricsSheetContent(),
@@ -96,12 +93,9 @@ class _PlaySongPageState extends State<PlaySongPage> {
           );
         }
 
-        final imageUrl = Supabase.instance.client.storage
-            .from('Buzzify')
-            .getPublicUrl(song['cover_url'] ?? '');
+        final imageUrl = song['cover_url'] ?? '';
 
         return Container(
-          // <-- THÊM LẠI CONTAINER VỚI GRADIENT
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -111,7 +105,7 @@ class _PlaySongPageState extends State<PlaySongPage> {
           ),
           child: Scaffold(
             backgroundColor:
-                Colors.transparent, // <-- Nền trong suốt để gradient hiển thị
+                Colors.transparent, 
             appBar: AppBar(
               backgroundColor: Colors.transparent,
               elevation: 0,
@@ -119,18 +113,22 @@ class _PlaySongPageState extends State<PlaySongPage> {
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.expand_more),
               ),
-              title: const Column(
+              // --- YÊU CẦU 1: SỬA TÊN DANH SÁCH PHÁT ---
+              title: Column(
                 children: [
-                  Text(
+                  const Text(
                     'ĐANG PHÁT TỪ',
                     style: TextStyle(fontSize: 12, color: Colors.white70),
                   ),
                   Text(
-                    'Danh sách bài hát',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    state.playlistTitle, // Lấy từ BLoC state
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
+              // --- KẾT THÚC SỬA ĐỔI 1 ---
               centerTitle: true,
               actions: [
                 IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
@@ -148,10 +146,8 @@ class _PlaySongPageState extends State<PlaySongPage> {
                       width: MediaQuery.of(context).size.width * 0.8,
                       height: MediaQuery.of(context).size.width * 0.8,
                       fit: BoxFit.cover,
-                      // Widget hiển thị trong lúc chờ tải ảnh (giúp UI mượt hơn)
                       placeholder: (context, url) =>
                           Container(color: Colors.grey[850]),
-                      // Widget hiển thị khi có lỗi tải ảnh
                       errorWidget: (context, url, error) =>
                           const Icon(Icons.error),
                     ),
@@ -159,7 +155,7 @@ class _PlaySongPageState extends State<PlaySongPage> {
                   const Spacer(flex: 3),
                   Row(
                     children: [
-                      Padding(
+                      const Padding(
                         padding: EdgeInsetsGeometry.fromLTRB(12, 0, 0, 0),
                       ),
                       Expanded(
@@ -176,7 +172,7 @@ class _PlaySongPageState extends State<PlaySongPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              buildArtistString(song),
+                              buildArtistString(song), // Dùng hàm formatter
                               style: TextStyle(
                                 fontSize: 18,
                                 color: Colors.white.withValues(alpha: 0.8),
@@ -314,17 +310,13 @@ class _PlaySongPageState extends State<PlaySongPage> {
   }
 }
 
-// =======================================================================
-// WIDGET RIÊNG CHO NỘI DUNG CỦA MODAL LYRICS
-// =======================================================================
+
 class LyricsSheetContent extends StatelessWidget {
   const LyricsSheetContent({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // ScrollController chỉ cần tạo ở đây
     final ItemScrollController itemScrollController = ItemScrollController();
-    // Hàm _format giờ là hàm toàn cục, có thể gọi trực tiếp
     String format(Duration d) => _format(d);
 
     return BlocConsumer<AudioPlayerBloc, AudioPlayerState>(
@@ -340,19 +332,14 @@ class LyricsSheetContent extends StatelessWidget {
         }
       },
       builder: (context, state) {
-        final song = state
-            .currentSong!; // Chắc chắn có song vì modal chỉ mở từ PlaySongPage
+        final song = state.currentSong!;
         return Stack(
           fit: StackFit.expand,
           children: [
             CachedNetworkImage(
-              imageUrl: Supabase.instance.client.storage
-                  .from('Buzzify')
-                  .getPublicUrl(song['cover_url'] ?? ''),
+              imageUrl: song['cover_url'] ?? '',
               fit: BoxFit.cover,
-              // Widget hiển thị trong lúc chờ tải ảnh (giúp UI mượt hơn)
               placeholder: (context, url) => Container(color: Colors.grey[850]),
-              // Widget hiển thị khi có lỗi tải ảnh
               errorWidget: (context, url, error) => const Icon(Icons.error),
             ),
             ClipRect(
@@ -396,8 +383,9 @@ class LyricsSheetContent extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
+                              // --- YÊU CẦU 2: SỬA TÊN NGHỆ SĨ ---
                               Text(
-                                song['artists']?['name'] ?? '',
+                                buildArtistString(song), // Dùng formatter
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 14,
@@ -406,6 +394,7 @@ class LyricsSheetContent extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
+                              // --- KẾT THÚC SỬA ĐỔI 2 ---
                             ],
                           ),
                         ),
@@ -425,7 +414,7 @@ class LyricsSheetContent extends StatelessWidget {
                               );
                             case LyricsStatus.failure:
                             case LyricsStatus
-                                .initial: // Hiển thị lỗi cho cả trạng thái initial nếu lyrics rỗng
+                                .initial: 
                               return const Center(
                                 child: Text(
                                   'Không tìm thấy lời bài hát.',

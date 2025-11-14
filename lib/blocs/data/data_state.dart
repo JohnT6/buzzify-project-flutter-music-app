@@ -14,11 +14,18 @@ class DataLoading extends DataState {}
 class DataLoaded extends DataState {
   final List<Map<String, dynamic>> songs;
   final List<Map<String, dynamic>> albums;
-  
-  const DataLoaded({this.songs = const [], this.albums = const []});
+  final List<Map<String, dynamic>> artists; // <-- THÊM MỚI
+  final List<Map<String, dynamic>> playlists; // <-- THÊM MỚI
+
+  const DataLoaded({
+    this.songs = const [],
+    this.albums = const [],
+    this.artists = const [], // <-- THÊM MỚI
+    this.playlists = const [],
+  });
 
   @override
-  List<Object> get props => [songs, albums];
+  List<Object> get props => [songs, albums, artists, playlists];
 }
 
 // Trạng thái khi có lỗi xảy ra

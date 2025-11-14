@@ -22,6 +22,7 @@ dependencies:
   path_provider: ^2.1.5
   equatable: ^2.0.7
   cached_network_image: ^3.4.1
+  flutter_secure_storage: ^9.2.4
   
 
 dev_dependencies:
@@ -42,7 +43,6 @@ flutter:
         - assets/fonts/
         - assets/images/
         - assets/vectors/
-        - assets/music/
 
   fonts:
         - family: Roboto

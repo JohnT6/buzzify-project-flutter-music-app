@@ -29,6 +29,10 @@ class AudioPlayerState extends Equatable {
   final LyricsStatus lyricsStatus;
   final int currentLyricIndex;
 
+  // --- THÊM DÒNG NÀY ---
+  final String playlistTitle; // Tên của danh sách đang phát
+  final String? contextId; // <-- THÊM: Lưu ID ngữ cảnh đang phát
+
   const AudioPlayerState({
     this.isPlaying = false,
     this.currentPlaylist = const [],
@@ -40,6 +44,8 @@ class AudioPlayerState extends Equatable {
     this.lyrics = const [],
     this.lyricsStatus = LyricsStatus.initial,
     this.currentLyricIndex = -1,
+    this.playlistTitle = 'Danh sách bài hát', // <-- Giá trị mặc định
+    this.contextId, // <-- THÊM
   });
   
   Map<String, dynamic>? get currentSong {
@@ -60,6 +66,8 @@ class AudioPlayerState extends Equatable {
     List<LyricLine>? lyrics,
     LyricsStatus? lyricsStatus,
     int? currentLyricIndex,
+    String? playlistTitle,
+    String? contextId, // <-- THÊM
   }) {
     return AudioPlayerState(
       isPlaying: isPlaying ?? this.isPlaying,
@@ -72,6 +80,8 @@ class AudioPlayerState extends Equatable {
       lyrics: lyrics ?? this.lyrics,
       lyricsStatus: lyricsStatus ?? this.lyricsStatus,
       currentLyricIndex: currentLyricIndex ?? this.currentLyricIndex,
+      playlistTitle: playlistTitle ?? this.playlistTitle, // <-- THÊM DÒNG NÀY
+      contextId: contextId ?? this.contextId, // <-- THÊM
     );
   }
 
@@ -87,6 +97,8 @@ class AudioPlayerState extends Equatable {
         lyrics,
         lyricsStatus,
         currentLyricIndex,
+        playlistTitle, // <-- THÊM DÒNG NÀY
+        contextId, // <-- THÊM
       ];
   
   // === Dành cho HydratedBloc ===
@@ -94,6 +106,7 @@ class AudioPlayerState extends Equatable {
     return {
       'currentPlaylist': currentPlaylist,
       'currentIndex': currentIndex,
+      'playlistTitle': playlistTitle, // <-- THÊM DÒNG NÀY (để lưu)
     };
   }
 
@@ -104,6 +117,8 @@ class AudioPlayerState extends Equatable {
     return AudioPlayerState(
       currentPlaylist: playlist ?? [],
       currentIndex: json['currentIndex'] as int?,
+      playlistTitle: json['playlistTitle'] ?? 'Danh sách bài hát', // <-- THÊM DÒNG NÀY (để tải)
+      contextId: json['contextId'] as String?, // <-- ĐÃ THÊM
     );
   }
 }
