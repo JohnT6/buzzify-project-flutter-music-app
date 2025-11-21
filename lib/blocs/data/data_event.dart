@@ -3,5 +3,13 @@ part of 'data_bloc.dart';
 @immutable
 abstract class DataEvent {}
 
-// Event để yêu cầu BLoC bắt đầu tải dữ liệu từ Supabase
-class FetchDataRequested extends DataEvent {}
+class FetchDataRequested extends DataEvent {
+  final String? userId; // <-- Cần userId để lấy danh sách yêu thích
+  FetchDataRequested({this.userId});
+}
+
+// Event mới để toggle like
+class ToggleLikeSong extends DataEvent {
+  final String songId;
+  ToggleLikeSong(this.songId);
+}

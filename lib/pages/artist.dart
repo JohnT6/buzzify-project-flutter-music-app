@@ -1,7 +1,5 @@
-// lib/pages/artist_page.dart
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
-import 'package:buzzify/common/formatters.dart';
 import 'package:buzzify/pages/albums.dart';
 import 'package:buzzify/services/api_artist_service.dart';
 import 'package:buzzify/widgets/music_visualizer.dart';
@@ -11,7 +9,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 class ArtistPage extends StatefulWidget {
-  // Nhận thông tin nghệ sĩ cơ bản từ trang Search
   final Map<String, dynamic> artist;
   const ArtistPage({super.key, required this.artist});
 
@@ -22,19 +19,22 @@ class ArtistPage extends StatefulWidget {
 class _ArtistPageState extends State<ArtistPage> {
   Color _dynamicColor = AppColors.darkBackground;
   
-  // State để lưu dữ liệu tải về
   bool _isLoading = true;
   List<Map<String, dynamic>> _popularSongs = [];
   List<Map<String, dynamic>> _artistAlbums = [];
+  
+  // Biến lưu trữ thông tin đầy đủ của nghệ sĩ (sau khi fetch lại)
+  late Map<String, dynamic> _fullArtistData;
   String? _error;
 
-  // Mock data (Backend của bạn chưa có)
   final String _monthlyListeners = "46,7 Tr người nghe hàng tháng";
   bool _isFollowing = true;
 
   @override
   void initState() {
     super.initState();
+    // Khởi tạo bằng dữ liệu truyền vào (có thể thiếu ảnh)
+    _fullArtistData = widget.artist;
     _fetchArtistData();
   }
 
@@ -43,19 +43,26 @@ class _ArtistPageState extends State<ArtistPage> {
       final service = context.read<ApiArtistService>();
       final artistId = widget.artist['id'];
 
-      // Gọi API tải bài hát và album song song
+      // Gọi song song 3 API:
+      // 1. Lấy lại thông tin chi tiết Artist (để có ảnh avatar)
+      // 2. Lấy bài hát
+      // 3. Lấy album
       final responses = await Future.wait([
+        service.getArtistById(artistId), // Hàm này cần có trong ApiArtistService
         service.getSongsByArtistId(artistId),
         service.getAlbumsByArtistId(artistId),
       ]);
 
       if (!mounted) return;
       setState(() {
-        _popularSongs = responses[0];
-        _artistAlbums = responses[1];
+        _fullArtistData = responses[0] as Map<String, dynamic>; // Cập nhật info đầy đủ
+        _popularSongs = responses[1] as List<Map<String, dynamic>>;
+        _artistAlbums = responses[2] as List<Map<String, dynamic>>;
         _isLoading = false;
       });
-      _updateBackgroundColor(widget.artist['avatar_url']);
+      
+      // Cập nhật màu nền dựa trên ảnh mới lấy được
+      _updateBackgroundColor(_fullArtistData['avatar_url']);
 
     } catch (e) {
       if (!mounted) return;
@@ -82,9 +89,10 @@ class _ArtistPageState extends State<ArtistPage> {
 
   @override
   Widget build(BuildContext context) {
-    final artistName = widget.artist['name'] ?? 'Không rõ';
-    final artistImage = widget.artist['avatar_url'];
-    final thisContextId = 'artist-${widget.artist['id']}';
+    // Sử dụng _fullArtistData thay vì widget.artist
+    final artistName = _fullArtistData['name'] ?? 'Không rõ';
+    final artistImage = _fullArtistData['avatar_url'];
+    final thisContextId = 'artist-${_fullArtistData['id']}';
 
     return Container(
       decoration: BoxDecoration(
@@ -92,7 +100,7 @@ class _ArtistPageState extends State<ArtistPage> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [_dynamicColor, AppColors.darkBackground],
-          stops: const [0.0, 0.7], // Gradient dốc hơn
+          stops: const [0.0, 0.5],
         ),
       ),
       child: Scaffold(
@@ -105,31 +113,27 @@ class _ArtistPageState extends State<ArtistPage> {
               stretch: true,
               backgroundColor: Colors.transparent,
               elevation: 0,
-              // Nút Back
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.of(context).pop(),
               ),
               flexibleSpace: FlexibleSpaceBar(
                 stretchModes: const [StretchMode.zoomBackground],
-                // Tiêu đề khi thu gọn
-                title: Text(
-                  artistName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                centerTitle: false,
-                titlePadding: const EdgeInsetsDirectional.only(start: 60, bottom: 16),
-                // Nền (Ảnh + Tên)
+                // title: Text(
+                //   artistName,
+                //   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                // ),
+                // centerTitle: false,
+                // titlePadding: const EdgeInsetsDirectional.only(start: 60, bottom: 16),
                 background: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Ảnh nghệ sĩ
                     CachedNetworkImage(
                       imageUrl: artistImage ?? '',
                       fit: BoxFit.cover,
+                      // Hiển thị màu xám nếu chưa có ảnh
                       errorWidget: (c, u, e) => Container(color: AppColors.darkGrey),
                     ),
-                    // Lớp phủ Gradient đen ở dưới
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -143,9 +147,8 @@ class _ArtistPageState extends State<ArtistPage> {
                         ),
                       ),
                     ),
-                    // Tên nghệ sĩ (lớn)
                     Positioned(
-                      bottom: 80, // Vị trí tên nghệ sĩ
+                      bottom: 80,
                       left: 16,
                       child: Text(
                         artistName,
@@ -157,7 +160,6 @@ class _ArtistPageState extends State<ArtistPage> {
                         ),
                       ),
                     ),
-                    // Người nghe hàng tháng
                     Positioned(
                       bottom: 60,
                       left: 18,
@@ -174,63 +176,85 @@ class _ArtistPageState extends State<ArtistPage> {
               ),
             ),
             
-            // Hàng Nút điều khiển
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: Row(
-                  children: [
-                    // Nút Theo dõi
-                    OutlinedButton(
-                      onPressed: () {
-                        setState(() => _isFollowing = !_isFollowing);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white54, width: 1.5),
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                      ),
-                      child: Text(
-                        _isFollowing ? 'Đang theo dõi' : 'Theo dõi',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    // Nút Tùy chọn
-                    IconButton(
-                      icon: const Icon(Icons.more_vert, color: Colors.white54),
-                      onPressed: () {},
-                    ),
-                    const Spacer(),
-                    // Nút Phát trộn
-                    IconButton(
-                      icon: const Icon(Icons.shuffle, color: Colors.white, size: 28),
-                      onPressed: () {
-                        // TODO: Logic phát trộn
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    // Nút Play FAB
-                    FloatingActionButton(
-                      onPressed: () {
-                        if (_popularSongs.isNotEmpty) {
-                          context.read<AudioPlayerBloc>().add(StartPlaying(
-                                playlist: _popularSongs,
-                                index: 0,
-                                playlistTitle: 'Bài hát phổ biến: $artistName',
-                                contextId: thisContextId,
-                              ));
-                        }
-                      },
-                      backgroundColor: AppColors.primary,
-                      child: const Icon(Icons.play_arrow, size: 30, color: Colors.white),
-                    ),
-                  ],
+                child: BlocBuilder<AudioPlayerBloc, AudioPlayerState>(
+                  builder: (context, audioState) {
+                    final isContextMatch = audioState.contextId == thisContextId;
+                    final isPlaying = isContextMatch && audioState.isPlaying;
+                    final isShuffling = audioState.isShuffling;
+
+                    return Row(
+                      children: [
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() => _isFollowing = !_isFollowing);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white54, width: 1.5),
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
+                          child: Text(
+                            _isFollowing ? 'Đang theo dõi' : 'Theo dõi',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.more_vert, color: Colors.white54),
+                          onPressed: () {},
+                        ),
+                        const Spacer(),
+                        
+                        // NÚT TRỘN BÀI
+                        IconButton(
+                          icon: Icon(
+                            Icons.shuffle, 
+                            color: isShuffling ? AppColors.primary : Colors.white, 
+                            size: 28
+                          ),
+                          onPressed: () {
+                            context.read<AudioPlayerBloc>().add(ToggleShuffleRequested());
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        
+                        // NÚT PHÁT HÌNH TRÒN (CircleBorder)
+                        FloatingActionButton(
+                          onPressed: () {
+                            if (isPlaying) {
+                              context.read<AudioPlayerBloc>().add(PauseRequested());
+                            } else if (isContextMatch) {
+                              context.read<AudioPlayerBloc>().add(PlayRequested());
+                            } else {
+                              if (_popularSongs.isNotEmpty) {
+                                context.read<AudioPlayerBloc>().add(StartPlaying(
+                                  playlist: _popularSongs,
+                                  index: 0,
+                                  playlistTitle: 'Bài hát phổ biến: $artistName',
+                                  contextId: thisContextId,
+                                ));
+                              }
+                            }
+                          },
+                          backgroundColor: AppColors.primary,
+                          // Đảm bảo nút luôn tròn
+                          shape: const CircleBorder(), 
+                          child: Icon(
+                            isPlaying ? Icons.pause : Icons.play_arrow, 
+                            size: 30, 
+                            color: Colors.white
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
 
-            // Tiêu đề "Popular"
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 24, 16, 16),
@@ -241,10 +265,8 @@ class _ArtistPageState extends State<ArtistPage> {
               ),
             ),
 
-            // Danh sách bài hát "Popular"
             _buildPopularList(thisContextId),
             
-            // Tiêu đề "Albums"
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 24, 16, 16),
@@ -255,10 +277,8 @@ class _ArtistPageState extends State<ArtistPage> {
               ),
             ),
             
-            // Danh sách ngang "Albums"
             _buildAlbumList(),
             
-            // Khoảng trống ở dưới
             const SliverToBoxAdapter(
               child: SizedBox(height: 100),
             ),
@@ -268,7 +288,6 @@ class _ArtistPageState extends State<ArtistPage> {
     );
   }
 
-  // Widget cho danh sách Popular
   Widget _buildPopularList(String thisContextId) {
     if (_isLoading) {
       return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
@@ -320,13 +339,12 @@ class _ArtistPageState extends State<ArtistPage> {
                     ),
                   ],
                 ),
-                // Bỏ qua subtitle (giống Spotify)
                 trailing: const Icon(Icons.more_vert, color: Colors.grey),
                 onTap: () {
                   context.read<AudioPlayerBloc>().add(StartPlaying(
                         playlist: _popularSongs,
                         index: index,
-                        playlistTitle: 'Bài hát phổ biến: ${widget.artist['name']}',
+                        playlistTitle: 'Bài hát phổ biến: ${_fullArtistData['name']}',
                         contextId: thisContextId,
                       ));
                 },
@@ -339,7 +357,6 @@ class _ArtistPageState extends State<ArtistPage> {
     );
   }
 
-  // Widget cho danh sách Albums
   Widget _buildAlbumList() {
     if (_isLoading || _error != null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -393,7 +410,6 @@ class _ArtistPageState extends State<ArtistPage> {
                     SizedBox(
                       width: 150,
                       child: Text(
-                        // Lấy năm từ 'release_date'
                         'Album • ${DateTime.tryParse(album['release_date'] ?? '')?.year ?? ''}',
                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                         overflow: TextOverflow.ellipsis,

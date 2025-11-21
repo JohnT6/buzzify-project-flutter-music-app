@@ -1,7 +1,9 @@
 // lib/pages/library.dart
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
+import 'package:buzzify/blocs/auth/auth_bloc.dart'; // Import AuthBloc
 import 'package:buzzify/blocs/data/data_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
+import 'package:buzzify/services/api_playlist_service.dart'; // Import Service
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:buzzify/pages/albums.dart';
@@ -10,10 +12,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:buzzify/pages/artist.dart'; 
 
 class LibraryPage extends StatefulWidget {
-  // --- THÊM HÀM CALLBACK ---
   final Function(bool)? onNavigationChanged;
   const LibraryPage({super.key, this.onNavigationChanged});
-  // --- KẾT THÚC THÊM ---
 
   @override
   State<LibraryPage> createState() => _LibraryPageState();
@@ -25,12 +25,56 @@ class _LibraryPageState extends State<LibraryPage> {
 
   final List<String> _filters = ['Tất cả', 'Playlist', 'Album', 'Nghệ sĩ'];
 
-  // --- HÀM BUILD GIAO DIỆN ---
+  // Biến lưu trữ playlist người dùng (Liked Songs + User Created)
+  List<Map<String, dynamic>> _userPlaylists = [];
+  bool _isLoadingUserPlaylists = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserPlaylists();
+  }
+
+  // Hàm lấy playlist của người dùng
+  Future<void> _fetchUserPlaylists() async {
+    final userId = context.read<AuthBloc>().state.user?.id;
+    if (userId == null) {
+      setState(() => _isLoadingUserPlaylists = false);
+      return;
+    }
+
+    try {
+      final service = context.read<ApiPlaylistService>();
+      
+      // Gọi song song: Lấy Liked Songs + Playlist tự tạo
+      final results = await Future.wait([
+        service.getLikedSongsPlaylist(userId),      // [0] Liked Songs
+        service.getUserCreatedPlaylists(userId),    // [1] User Created
+      ]);
+
+      // Kết quả Liked Songs trả về Map (chi tiết), ta cần wrap vào List
+      // Hoặc nếu API trả về object playlist, ta add vào list
+      final likedPlaylist = results[0] as Map<String, dynamic>; // API getLikedSongsPlaylist trả về Map
+      final createdPlaylists = results[1] as List<Map<String, dynamic>>; // API getUserCreatedPlaylists trả về List
+
+      if (mounted) {
+        setState(() {
+          // Gộp vào danh sách chung. Đưa Liked Songs lên đầu.
+          _userPlaylists = [
+            {...likedPlaylist, '__type': 'playlist'}, 
+            ...createdPlaylists.map((p) => {...p, '__type': 'playlist'}).toList()
+          ];
+          _isLoadingUserPlaylists = false;
+        });
+      }
+    } catch (e) {
+      print("Lỗi tải playlist thư viện: $e");
+      if (mounted) setState(() => _isLoadingUserPlaylists = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // --- XÓA APPBAR ---
-    // AppBar sẽ được cung cấp bởi HomePage
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
       body: Column(
@@ -43,7 +87,6 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  // Widget cho các Chip lọc
   Widget _buildFilterChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -76,7 +119,6 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  // Widget cho hàng "Gần đây" và nút "Grid/List"
   Widget _buildListControls() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -84,9 +126,7 @@ class _LibraryPageState extends State<LibraryPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           TextButton.icon(
-            onPressed: () {
-              // TODO: Logic sắp xếp
-            },
+            onPressed: () {},
             icon: const Icon(Icons.sort, color: Colors.white), 
             label: const Text('Gần đây', style: TextStyle(color: Colors.white)),
           ),
@@ -104,7 +144,6 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  // --- HIỂN THỊ DANH SÁCH THƯ VIỆN ---
   Widget _buildLibraryList() {
     return BlocBuilder<DataBloc, DataState>(
       builder: (context, state) {
@@ -112,46 +151,37 @@ class _LibraryPageState extends State<LibraryPage> {
           return const Center(child: CircularProgressIndicator());
         }
         if (state is DataLoaded) {
+          // Lấy dữ liệu tổng hợp (Global + User)
           final itemsToShow = _getFilteredData(state);
 
-          if (itemsToShow.isEmpty) {
-            return Center(child: Text('Thư viện của bạn cho mục này đang trống.', style: TextStyle(color: Colors.grey)));
+          if (itemsToShow.isEmpty && !_isLoadingUserPlaylists) {
+            return const Center(child: Text('Thư viện trống.', style: TextStyle(color: Colors.grey)));
           }
 
           if (_isGridView) {
-            return _buildGridView(itemsToShow); // Hiển thị Grid
+            return _buildGridView(itemsToShow); 
           } else {
-            return _buildListView(itemsToShow); // Hiển thị List
+            return _buildListView(itemsToShow); 
           }
         }
         if (state is DataError) {
-          return Center(child: Text('Lỗi tải dữ liệu: ${state.message}'));
+          return Center(child: Text('Lỗi: ${state.message}'));
         }
         return const SizedBox.shrink();
       },
     );
   }
   
-  // Hàm render danh sách (ListView)
   Widget _buildListView(List<Map<String, dynamic>> items) {
-    if (_selectedFilter == 'Tất cả' || _selectedFilter == 'Playlist') {
-      if (items.isEmpty || items.first['__type'] != 'liked_songs') {
-          items.insert(0, {
-          '__type': 'liked_songs',
-          'id': 'liked-songs-placeholder',
-          'title': 'Bài hát đã thích',
-          'subtitle_text': 'Playlist',
-          'cover_url': null, 
-        });
-      }
-    }
-
     return ListView.builder(
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
         final itemType = item['__type'] ?? 'unknown';
         final isArtist = itemType == 'artist';
+        
+        // Kiểm tra ghim (Liked Songs)
+        final bool isPinned = item['loai_playlist'] == 'liked_songs' || item['title'] == 'Bài hát đã thích';
         
         return ListTile(
           leading: ClipRRect(
@@ -164,17 +194,38 @@ class _LibraryPageState extends State<LibraryPage> {
                 width: 50, height: 50, 
                 color: AppColors.darkGrey,
                 child: Icon(
-                  itemType == 'album' ? Icons.album : 
+                  isPinned ? Icons.favorite :
+                  (itemType == 'album' ? Icons.album : 
                   (itemType == 'playlist' ? Icons.queue_music : 
-                  (itemType == 'artist' ? Icons.person : Icons.music_note))
+                  (itemType == 'artist' ? Icons.person : Icons.music_note)))
                 ),
               ),
             ),
           ),
-          title: Text(item['title'] ?? item['name'] ?? 'Không có tiêu đề'),
-          subtitle: Text(
-            item['subtitle_text'] ?? 'Không rõ',
-            style: const TextStyle(color: Colors.grey),
+          title: Text(
+            item['title'] ?? item['name'] ?? 'Không có tiêu đề',
+            style: TextStyle(
+              color: isPinned ? AppColors.primary : Colors.white,
+              fontWeight: isPinned ? FontWeight.bold : FontWeight.normal
+            ),
+          ),
+          subtitle: Row(
+            children: [
+              if (isPinned) ...[
+                Transform.rotate(
+                  angle: 0.7, 
+                  child: const Icon(Icons.push_pin, size: 14, color: AppColors.primary),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Expanded(
+                child: Text(
+                  item['subtitle_text'] ?? 'Không rõ',
+                  style: const TextStyle(color: Colors.grey),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
           onTap: () => _onItemTapped(item),
         );
@@ -182,7 +233,6 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  // Hàm render danh sách (GridView)
   Widget _buildGridView(List<Map<String, dynamic>> items) {
     return GridView.builder(
       padding: const EdgeInsets.all(16.0),
@@ -197,6 +247,7 @@ class _LibraryPageState extends State<LibraryPage> {
         final item = items[index];
         final itemType = item['__type'] ?? 'unknown';
         final isArtist = itemType == 'artist';
+        final bool isPinned = item['loai_playlist'] == 'liked_songs' || item['title'] == 'Bài hát đã thích';
         
         return GestureDetector(
           onTap: () => _onItemTapped(item),
@@ -213,9 +264,10 @@ class _LibraryPageState extends State<LibraryPage> {
                     errorWidget: (c, u, e) => Container(
                       color: AppColors.darkGrey,
                       child: Icon(
-                        itemType == 'album' ? Icons.album : 
+                        isPinned ? Icons.favorite :
+                        (itemType == 'album' ? Icons.album : 
                         (itemType == 'playlist' ? Icons.queue_music : 
-                        (itemType == 'artist' ? Icons.person : Icons.music_note))
+                        (itemType == 'artist' ? Icons.person : Icons.music_note)))
                       ),
                     ),
                   ),
@@ -224,15 +276,31 @@ class _LibraryPageState extends State<LibraryPage> {
               const SizedBox(height: 8),
               Text(
                 item['title'] ?? item['name'] ?? '', 
-                style: const TextStyle(fontWeight: FontWeight.bold), 
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isPinned ? AppColors.primary : Colors.white,
+                ), 
                 maxLines: 1, 
                 overflow: TextOverflow.ellipsis
               ),
-              Text(
-                item['subtitle_text'] ?? 'Không rõ', 
-                style: const TextStyle(color: Colors.grey, fontSize: 12), 
-                maxLines: 1, 
-                overflow: TextOverflow.ellipsis
+              Row(
+                children: [
+                  if (isPinned) ...[
+                    Transform.rotate(
+                      angle: 0.7, 
+                      child: const Icon(Icons.push_pin, size: 12, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 2),
+                  ],
+                  Expanded(
+                    child: Text(
+                      item['subtitle_text'] ?? 'Không rõ', 
+                      style: const TextStyle(color: Colors.grey, fontSize: 12), 
+                      maxLines: 1, 
+                      overflow: TextOverflow.ellipsis
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -241,15 +309,37 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 
-  // Lọc dữ liệu từ DataLoaded state
+  // --- HÀM QUAN TRỌNG: Trộn dữ liệu Global + User ---
   List<Map<String, dynamic>> _getFilteredData(DataLoaded state) {
     switch (_selectedFilter) {
-      case 'Tất cả': 
-      case 'Playlist': 
-        return state.playlists.map((p) => {
+      case 'Tất cả':
+        // 1. Lấy playlist người dùng (đã bao gồm Liked Songs)
+        final userItems = _userPlaylists.map((p) => {
           ...p,
-          '__type': 'playlist',
-          'subtitle_text': 'Playlist • Buzzify'
+          'subtitle_text': p['loai_playlist'] == 'liked_songs' ? 'Playlist • Đã ghim' : 'Playlist • Của bạn'
+        }).toList();
+
+        // 2. Lấy Album (từ DataBloc)
+        final albums = state.albums.map((a) => {
+          ...a,
+          '__type': 'album',
+          'subtitle_text': 'Album • ${a['artists']?['name'] ?? 'Không rõ'}'
+        }).toList();
+        
+        // 3. Lấy Nghệ sĩ (từ DataBloc)
+        final artists = state.artists.map((art) => {
+          ...art,
+          '__type': 'artist',
+          'subtitle_text': 'Nghệ sĩ'
+        }).toList();
+
+        // Trộn tất cả
+        return [...userItems, ...albums, ...artists];
+
+      case 'Playlist': 
+        return _userPlaylists.map((p) => {
+          ...p,
+          'subtitle_text': p['loai_playlist'] == 'liked_songs' ? 'Playlist • Đã ghim' : 'Playlist • Của bạn'
         }).toList();
         
       case 'Album':
@@ -271,19 +361,11 @@ class _LibraryPageState extends State<LibraryPage> {
     }
   }
 
-  // --- SỬA LOGIC NAVIGATION ---
-  // Xử lý khi nhấn vào item
   void _onItemTapped(Map<String, dynamic> item) {
-     // Ẩn AppBar chính khi điều hướng
      widget.onNavigationChanged?.call(false);
-     
      Widget destinationPage;
 
      switch (item['__type']) {
-        case 'liked_songs':
-          print("Chuyển đến trang Bài hát đã thích (chưa tạo)");
-          widget.onNavigationChanged?.call(true); // Hiện lại AppBar
-          return; // Dừng
         case 'album':
           destinationPage = AlbumPage(album: item);
           break;
@@ -294,15 +376,13 @@ class _LibraryPageState extends State<LibraryPage> {
           destinationPage = ArtistPage(artist: item);
           break;
         default:
-          widget.onNavigationChanged?.call(true); // Hiện lại AppBar
-          return; // Dừng
+          widget.onNavigationChanged?.call(true); 
+          return; 
      }
      
-     // Điều hướng
      Navigator.of(context).push(
        MaterialPageRoute(builder: (_) => destinationPage),
      ).then((_) {
-       // Hiện lại AppBar chính khi quay về
        widget.onNavigationChanged?.call(true);
      });
   }

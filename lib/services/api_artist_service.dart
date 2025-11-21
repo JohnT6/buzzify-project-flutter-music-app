@@ -59,4 +59,16 @@ class ApiArtistService {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> getArtistById(String artistId) async {
+    try {
+      final Map<String, dynamic> rawData = await _apiClient.get(
+        '${ApiConstants.artists}/$artistId'
+      );
+      return mapApiArtist(rawData);
+    } catch (e) {
+      print('Lỗi ApiArtistService.getArtistById: $e');
+      rethrow;
+    }
+  }
 }

@@ -47,4 +47,43 @@ class ApiPlaylistService {
       rethrow;
     }
   }
+
+  // Lấy các playlist do 1 người dùng tạo
+  Future<List<Map<String, dynamic>>> getUserCreatedPlaylists(String userId) async {
+    try {
+      // Sẽ gọi: /api/playlists/user/USER_ID/created
+      final List<dynamic> rawData = await _apiClient.get(
+        '${ApiConstants.userPlaylists}/$userId/created'
+      );
+      
+      final List<Map<String, dynamic>> apiPlaylistsList = 
+          List<Map<String, dynamic>>.from(rawData);
+
+      // Dùng mapper (nó sẽ không có 'songs' bên trong, nhưng vẫn ổn)
+      final List<Map<String, dynamic>> appPlaylistsList = 
+          apiPlaylistsList.map((apiPlaylist) => mapApiPlaylist(apiPlaylist)).toList();
+          
+      return appPlaylistsList;
+    } catch (e) {
+      print('Lỗi ApiPlaylistService.getUserCreatedPlaylists: $e');
+      rethrow;
+    }
+  }
+
+  // GET /api/playlists/user/:userId/liked-songs
+  // Lấy playlist "Bài hát đã thích" của người dùng
+  Future<Map<String, dynamic>> getLikedSongsPlaylist(String userId) async {
+    try {
+      final dynamic rawData = await _apiClient.get(
+        '${ApiConstants.userPlaylists}/$userId/liked-songs'
+      );
+      
+      // Map dữ liệu playlist + songs
+      return mapApiPlaylist(rawData); 
+    } catch (e) {
+      print('Lỗi ApiPlaylistService.getLikedSongsPlaylist: $e');
+      // Trả về map rỗng hoặc rethrow tùy ý
+      rethrow;
+    }
+  }
 }

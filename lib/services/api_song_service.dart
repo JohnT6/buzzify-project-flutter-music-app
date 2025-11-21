@@ -28,4 +28,17 @@ class ApiSongService {
       rethrow;
     }
   }
+
+  // Thích hoặc bỏ thích bài hát
+  Future<bool> toggleLike(String songId) async {
+    try {
+      // Gọi POST /api/songs/:id/like
+      final response = await _apiClient.post('${ApiConstants.songs}/$songId/like');
+      // Server trả về: { message: "...", isLiked: true/false }
+      return response['isLiked'] ?? false;
+    } catch (e) {
+      print('Lỗi toggleLike: $e');
+      rethrow;
+    }
+  }
 }

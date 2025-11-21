@@ -6,7 +6,6 @@ import 'package:equatable/equatable.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:meta/meta.dart';
-// import 'package:supabase_flutter/supabase_flutter.dart'; // ĐÃ XÓA
 import 'package:http/http.dart' as http;
 
 part 'audio_player_event.dart';
@@ -19,7 +18,7 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
 
   AudioPlayerBloc() : super(const AudioPlayerState()) {
     on<StartPlaying>(_onStartPlaying);
-    on<PlayRequested>((event, emit) => _audioPlayer.play());
+    on<PlayRequested>(_onPlayRequested); // Tách ra hàm riêng để xử lý logic load lại nếu cần
     on<PauseRequested>((event, emit) => _audioPlayer.pause());
     on<NextSongRequested>((event, emit) => _audioPlayer.seekToNext());
     on<PreviousSongRequested>((event, emit) => _audioPlayer.seekToPrevious());
@@ -32,49 +31,68 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     _listenToPlayerChanges();
   }
 
-  // --- SỬA LỖI MINI PLAYER TẠI ĐÂY ---
+  // --- SỬA LỖI: Cập nhật UI ngay lập tức (Optimistic Update) ---
   Future<void> _onStartPlaying(StartPlaying event, Emitter<AudioPlayerState> emit) async {
     try {
-      final isNewPlaylist = state.currentPlaylist != event.playlist;
-      if (isNewPlaylist) {
+      final bool isNewPlaylist = state.currentPlaylist != event.playlist;
+      // Kiểm tra kỹ: Nếu player chưa có nguồn nhạc hoặc playlist trống
+      final bool isPlayerEmpty = _audioPlayer.audioSource == null || state.currentPlaylist.isEmpty;
+
+      // 1. Nạp nhạc vào Player (Nếu cần)
+      if (isNewPlaylist || isPlayerEmpty) {
         final audioSources = event.playlist.map((song) {
-          // SỬA ĐỔI: Dùng 'url' từ Node.js (đã bao gồm token)
-          // thay vì 'audio_url' và Supabase
           final url = song['url']; 
-          if (url == null) {
-            throw Exception('Song URL is null for song: ${song['title']}');
-          }
-          return AudioSource.uri(Uri.parse(url));
+          if (url == null) throw Exception('URL null');
+          return AudioSource.uri(Uri.parse(url), tag: song);
         }).toList();
 
-        // Nếu danh sách rỗng, không làm gì cả
-        if (audioSources.isEmpty) return;
-
-        await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: audioSources));
+        await _audioPlayer.setAudioSource(
+          ConcatenatingAudioSource(children: audioSources),
+          initialIndex: event.index,
+          preload: true
+        );
+      } else {
+        // Nếu playlist cũ -> Chỉ cần nhảy tới bài
+        await _audioPlayer.seek(Duration.zero, index: event.index);
       }
       
-      await _audioPlayer.seek(Duration.zero, index: event.index);
-      await _audioPlayer.play(); // <-- BÂY GIỜ DÒNG NÀY SẼ CHẠY
-      
-      // BÂY GIỜ DÒNG NÀY SẼ CHẠY -> HIỆN MINI PLAYER
+      // 2. QUAN TRỌNG: Cập nhật giao diện NGAY LẬP TỨC
+      // (Trước khi gọi play() để tránh bị kẹt UI nếu play() gặp lỗi)
       emit(state.copyWith(
-        currentPlaylist: isNewPlaylist ? event.playlist : state.currentPlaylist,
+        isPlaying: true, // Hiển thị nút Pause ngay
+        currentPlaylist: event.playlist,
         currentIndex: event.index,
-        // --- SỬA ĐỔI CHỖ NÀY ---
-        playlistTitle: event.playlistTitle ?? 'Danh sách bài hát', // <-- LƯU TÊN PLAYLIST
-        contextId: event.contextId, // <-- LƯU CONTEXT ID TẠI ĐÂY
-        // ---
+        playlistTitle: event.playlistTitle ?? 'Danh sách bài hát',
+        contextId: event.contextId,
         lyrics: [],
         lyricsStatus: LyricsStatus.initial, 
         currentLyricIndex: -1,
       ));
+
+      // 3. Bây giờ mới gọi lệnh phát nhạc
+      // (Nếu máy ảo lỗi codec ở đây, UI vẫn đã hiển thị đúng bài hát)
+      await _audioPlayer.play();
+      
     } catch (e) {
-      print('LỖI _onStartPlaying: $e');
-      // Xử lý lỗi (ví dụ: phát ra state lỗi)
+      print('Lỗi phát nhạc: $e');
+      // Nếu lỗi thực sự xảy ra và nhạc không chạy, ta mới trả trạng thái về Pause
+      emit(state.copyWith(isPlaying: false));
     }
   }
-  // --- KẾT THÚC SỬA LỖI ---
-  
+
+  // Xử lý riêng cho nút Play trên Miniplayer (đề phòng trường hợp mở lại app nhưng chưa load source)
+  Future<void> _onPlayRequested(PlayRequested event, Emitter<AudioPlayerState> emit) async {
+    if (_audioPlayer.audioSource == null && state.currentPlaylist.isNotEmpty) {
+        // Nếu player rỗng mà state vẫn có bài (do HydratedBloc), hãy nạp lại source
+        final audioSources = state.currentPlaylist.map((song) => AudioSource.uri(Uri.parse(song['url']))).toList();
+        await _audioPlayer.setAudioSource(
+          ConcatenatingAudioSource(children: audioSources),
+          initialIndex: state.currentIndex ?? 0,
+        );
+    }
+    _audioPlayer.play();
+  }
+
   void _onToggleShuffle(ToggleShuffleRequested event, Emitter<AudioPlayerState> emit) {
     final isEnabled = !_audioPlayer.shuffleModeEnabled;
     _audioPlayer.setShuffleModeEnabled(isEnabled);
@@ -88,25 +106,16 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     _audioPlayer.setLoopMode(nextMode);
   }
 
-  // --- HÀM SỬA LỖI LYRICS ---
   Future<void> _onFetchLyrics(FetchLyricsRequested event, Emitter<AudioPlayerState> emit) async {
     if (state.currentSong == null) return;
     emit(state.copyWith(lyricsStatus: LyricsStatus.loading));
-    
     try {
       final song = state.currentSong!;
-      
       final artistName = Uri.encodeComponent(song['artists']?['name'] ?? '');
       final trackName = Uri.encodeComponent(song['title'] ?? '');
-      
-      // Lấy thêm 'album_name' và 'duration_seconds' (từ mapper)
       final albumName = Uri.encodeComponent(song['album_name'] ?? '');
-      // final duration = (song['duration_seconds'] ?? 0).toString();
-
-      final url = Uri.parse(
-        'https://lrclib.net/api/get?artist_name=$artistName&track_name=$trackName&album_name=$albumName'
-      );
       
+      final url = Uri.parse('https://lrclib.net/api/get?artist_name=$artistName&track_name=$trackName&album_name=$albumName');
       final response = await http.get(url);
       
       if (response.statusCode == 200) {
@@ -124,15 +133,15 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
       emit(state.copyWith(lyricsStatus: LyricsStatus.failure));
     }
   }
-  // --- KẾT THÚC SỬA LỖI LYRICS ---
 
   Future<void> _onLogoutReset(LogoutReset event, Emitter<AudioPlayerState> emit) async {
     await _audioPlayer.stop();
-    await _audioPlayer.setAudioSource(ConcatenatingAudioSource(children: []));
+    // Clear hoàn toàn state
     emit(const AudioPlayerState());
     await clear();
   }
 
+  // --- FIX 2: TRÁNH NHẢY INDEX KHI RESET ---
   void _listenToPlayerChanges() {
     _audioPlayer.playerStateStream.listen((playerState) {
       if (!isClosed) emit(state.copyWith(isPlaying: playerState.playing));
@@ -153,9 +162,10 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
     });
 
     _audioPlayer.currentIndexStream.listen((index) {
-      if (!isClosed && index != null) {
+      // QUAN TRỌNG: Chỉ cập nhật index khi nó hợp lệ VÀ Player đã có source
+      // Điều này ngăn chặn việc index bị reset về 0 hoặc null khi mới mở app
+      if (!isClosed && index != null && _audioPlayer.audioSource != null) {
         emit(state.copyWith(currentIndex: index, lyrics: [], lyricsStatus: LyricsStatus.initial, currentLyricIndex: -1));
-        // Tự động tìm lyrics mới khi chuyển bài
         add(FetchLyricsRequested());
       }
     });
@@ -195,18 +205,8 @@ class AudioPlayerBloc extends HydratedBloc<AudioPlayerEvent, AudioPlayerState> {
   AudioPlayerState? fromJson(Map<String, dynamic> json) {
     try {
       final storedState = AudioPlayerState.fromJson(json);
-      if (storedState.currentPlaylist.isNotEmpty) {
-        final audioSources = storedState.currentPlaylist.map((song) {
-          // SỬA ĐỔI: Dùng 'url' từ Node.js
-          final url = song['url'];
-          return AudioSource.uri(Uri.parse(url));
-        }).toList();
-        _audioPlayer.setAudioSource(
-          ConcatenatingAudioSource(children: audioSources), 
-          initialIndex: storedState.currentIndex, 
-          preload: false
-        );
-      }
+      // LƯU Ý: Không tự động setAudioSource ở đây để tránh xung đột khi khởi động.
+      // Việc load source sẽ được thực hiện ở _onStartPlaying hoặc _onPlayRequested.
       return storedState;
     } catch (_) { return null; }
   }

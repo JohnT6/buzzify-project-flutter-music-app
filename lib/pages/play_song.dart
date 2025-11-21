@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
+import 'package:buzzify/blocs/data/data_bloc.dart';
 import 'package:buzzify/common/app_colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 // import 'package:supabase_flutter/supabase_flutter.dart'; // Đã xóa
 import 'package:buzzify/common/formatters.dart'; // <-- IMPORT FORMATTER
+import 'package:buzzify/widgets/song_options_modal.dart';
 
 class PlaySongPage extends StatefulWidget {
   const PlaySongPage({super.key});
@@ -44,7 +46,8 @@ class _PlaySongPageState extends State<PlaySongPage> {
       if (mounted) {
         setState(
           () => _backgroundColor =
-              palette.vibrantColor?.color ?? AppColors.darkBackground,
+              // (palette.vibrantColor?.color ?? palette.darkMutedColor?.color)!,
+              palette.mutedColor?.color ?? AppColors.darkBackground,
         );
       }
     } catch (e) {
@@ -131,7 +134,11 @@ class _PlaySongPageState extends State<PlaySongPage> {
               // --- KẾT THÚC SỬA ĐỔI 1 ---
               centerTitle: true,
               actions: [
-                IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+                IconButton(onPressed: () {
+                  if (song != null) {
+                       showSongOptionsModal(context, song);
+                    }
+                }, icon: const Icon(Icons.more_vert)),
               ],
             ),
             body: Padding(
@@ -183,9 +190,27 @@ class _PlaySongPageState extends State<PlaySongPage> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.add_circle_outline, size: 30),
+                      BlocBuilder<DataBloc, DataState>(
+                        builder: (context, dataState) {
+                          // QUAN TRỌNG: Ép kiểu ID về String
+                          final currentSongId = song['id'].toString(); 
+                          bool isLiked = false;
+                          
+                          if (dataState is DataLoaded) {
+                            isLiked = dataState.likedSongIds.contains(currentSongId);
+                          }
+                          
+                          return IconButton(
+                            onPressed: () {
+                              context.read<DataBloc>().add(ToggleLikeSong(currentSongId));
+                            },
+                            icon: Icon(
+                              isLiked ? Icons.favorite : Icons.favorite_border,
+                              size: 30, 
+                              color: isLiked ? AppColors.primary : Colors.white,
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),

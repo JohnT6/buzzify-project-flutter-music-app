@@ -7,15 +7,21 @@ import 'package:buzzify/pages/library.dart';
 import 'package:buzzify/pages/play_song.dart';
 import 'package:buzzify/pages/playlist.dart';
 import 'package:buzzify/pages/search.dart';
-import 'package:buzzify/supabase/auth_controller.dart';
+import 'package:buzzify/pages/artist.dart';
+import 'package:buzzify/pages/profile_page.dart'; // Import ProfilePage
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+// import 'package:supabase_flutter/supabase_flutter.dart'; // <-- XÓA
 import 'package:buzzify/common/formatters.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:ui';
 import 'package:buzzify/widgets/music_visualizer.dart'; 
+import 'package:buzzify/blocs/auth/auth_bloc.dart'; // <-- THÊM
+import 'package:buzzify/models/user.dart'; // <-- THÊM
+import 'package:buzzify/controllers/auth_controller.dart'; // Sửa import
+import 'package:buzzify/widgets/authenticated_avatar.dart'; // <-- THÊM
+import 'package:buzzify/widgets/song_options_modal.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -24,15 +30,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 0; // 0: Home, 1: Search, 2: Library
+  int _bottomNavIndex = 0; // 0, 1, 2, 3 (3 = Tạo)
   
-  // SỬA LỖI 1: Chỉ cần 3 GlobalKeys cho 3 tab
   final List<GlobalKey<NavigatorState>> _navigatorKeys = [
     GlobalKey<NavigatorState>(), // 0: Trang chủ
     GlobalKey<NavigatorState>(), // 1: Tìm kiếm
     GlobalKey<NavigatorState>(), // 2: Thư viện
   ];
-  // --- KẾT THÚC SỬA 1 ---
 
   bool _showAppBar = true;
   Color _miniPlayerColor = AppColors.darkGrey;
@@ -41,15 +46,14 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _updateMiniPlayerColor(String? coverUrl) async {
     if (coverUrl == null || !mounted) return;
-    final publicUrl = coverUrl;
     try {
       final palette = await PaletteGenerator.fromImageProvider(
-        NetworkImage(publicUrl),
+        CachedNetworkImageProvider(coverUrl),
       );
       if (mounted) {
         setState(
           () => _miniPlayerColor =
-              palette.vibrantColor?.color ?? AppColors.darkGrey,
+              palette.mutedColor?.color ?? AppColors.darkBackground,
         );
       }
     } catch (e) {
@@ -57,23 +61,24 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  User? currentUser;
+  // User? currentUser; // <-- XÓA (Sẽ lấy từ BLoC)
 
   @override
   void initState() {
     super.initState();
-    currentUser = Supabase.instance.client.auth.currentUser;
+    // currentUser = Supabase.instance.client.auth.currentUser; // <-- XÓA
   }
 
-  // Hàm tạo Dialog "Tạo" (Đã đúng)
   void _showCreateDialog(BuildContext context) {
-    setState(() => _isCreateDialogOpen = true);
+    setState(() {
+       _isCreateDialogOpen = true;
+       _bottomNavIndex = 3; 
+    });
 
     showModalBottomSheet(
       context: context,
-      // Hiển thị dialog BÊN TRÊN BottomNav
       useRootNavigator: false, 
-      backgroundColor: AppColors.darkGrey,
+      backgroundColor: AppColors.darkGrey, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16.0),
       ),
@@ -84,7 +89,6 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Tạo danh sách phát
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -104,7 +108,6 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
               const SizedBox(height: 20),
-              // 2. Jam
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -112,7 +115,7 @@ class _HomePageState extends State<HomePage> {
                   height: 50,
                   decoration: BoxDecoration(
                     color: Colors.grey[700],
-                    borderRadius: BorderRadius.circular(25.0),
+                    borderRadius: BorderRadius.circular(25.0), 
                   ),
                   child: const Icon(Icons.people, color: Colors.white, size: 30),
                 ),
@@ -128,12 +131,15 @@ class _HomePageState extends State<HomePage> {
         );
       },
     ).whenComplete(() {
-      setState(() => _isCreateDialogOpen = false);
+      setState(() {
+        _isCreateDialogOpen = false;
+        _bottomNavIndex = _selectedIndex; 
+      });
     });
   }
 
-  // (Hàm _showRightSideMenu giữ nguyên)
-  void _showRightSideMenu(BuildContext context) {
+  // --- SỬA HÀM NÀY (Thêm User) ---
+  void _showRightSideMenu(BuildContext context, User? user) {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -160,24 +166,17 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundImage:
-                              currentUser?.userMetadata?['avatar_url'] != null
-                              ? NetworkImage(
-                                  currentUser!.userMetadata!['avatar_url'],
-                                )
-                              : null,
-                          child:
-                              currentUser?.userMetadata?['avatar_url'] == null
-                              ? const Icon(Icons.person, size: 30)
-                              : null,
+                        // Dùng AuthenticatedAvatar để hiển thị
+                        AuthenticatedAvatar(
+                          user: user, 
+                          radius: 30, 
+                          fontSize: 30, 
+                          iconSize: 30
                         ),
                         const SizedBox(width: 15),
                         Expanded(
                           child: Text(
-                            currentUser?.userMetadata?['full_name'] ??
-                                'Không có tên',
+                            user?.hoTen ?? 'Không có tên',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -192,7 +191,12 @@ class _HomePageState extends State<HomePage> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.person),
                       title: const Text('Xem hồ sơ'),
-                      onTap: () {},
+                      onTap: () {
+                         Navigator.pop(context); // Đóng menu
+                         Navigator.of(context).push(
+                           MaterialPageRoute(builder: (context) => const ProfilePage())
+                         );
+                      },
                     ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -225,10 +229,11 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
+  // --- KẾT THÚC SỬA ---
 
-  // Hàm build actions cho AppBar (Đã đúng)
-  List<Widget> _buildAppBarActions() {
-    if (_selectedIndex == 2) { // 2 = Tab "Thư viện"
+  // --- SỬA HÀM NÀY (Thêm User) ---
+  List<Widget> _buildAppBarActions(User? user) {
+    if (_selectedIndex == 2) { // "Thư viện"
       return [
         IconButton(
           onPressed: () { /* TODO: Logic tìm kiếm thư viện */ },
@@ -237,25 +242,14 @@ class _HomePageState extends State<HomePage> {
         Padding(
           padding: const EdgeInsets.only(right: 8.0),
           child: GestureDetector(
-            onTap: () => _showRightSideMenu(context),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundImage:
-                  currentUser?.userMetadata?['avatar_url'] != null
-                  ? NetworkImage(
-                      currentUser!.userMetadata!['avatar_url'],
-                    )
-                  : null,
-              child: currentUser?.userMetadata?['avatar_url'] == null
-                  ? const Icon(Icons.person, size: 18)
-                  : null,
-            ),
+            onTap: () => _showRightSideMenu(context, user), // <-- Pass user
+            child: AuthenticatedAvatar(user: user, radius: 16, iconSize: 18),
           ),
         ),
       ];
     } 
     
-    // Mặc định (cho Trang chủ, Tìm kiếm)
+    // Mặc định (Trang chủ, Tìm kiếm)
     return [
       IconButton(
         onPressed: () {},
@@ -264,60 +258,56 @@ class _HomePageState extends State<HomePage> {
       Padding(
         padding: const EdgeInsets.only(right: 8.0),
         child: GestureDetector(
-          onTap: () => _showRightSideMenu(context),
-          child: CircleAvatar(
-            radius: 16,
-            backgroundImage:
-                currentUser?.userMetadata?['avatar_url'] != null
-                ? NetworkImage(
-                    currentUser!.userMetadata!['avatar_url'],
-                  )
-                : null,
-            child: currentUser?.userMetadata?['avatar_url'] == null
-                ? const Icon(Icons.person, size: 18)
-                : null,
-          ),
+          onTap: () => _showRightSideMenu(context, user), // <-- Pass user
+          child: AuthenticatedAvatar(user: user, radius: 16, iconSize: 18),
         ),
       ),
     ];
   }
+  // --- KẾT THÚC SỬA ---
 
   @override
   Widget build(BuildContext context) {
+    // --- SỬA LỖI TẠI ĐÂY ---
+    // 1. Dùng .watch() để lắng nghe thay đổi
+    final authState = context.watch<AuthBloc>().state;
+    final User? user = authState.user; // Lấy user mới nhất
+
     final audioState = context.watch<AudioPlayerBloc>().state;
-    // SỬA LỖI 2: Chỉ cần 3 title
+    // --- KẾT THÚC SỬA ---
+    
     final pageTitles = ['Trang chủ', 'Tìm kiếm', 'Thư viện'];
-    // --- KẾT THÚC SỬA 2 ---
     final song = audioState.currentSong;
 
     if (song != null && song['id'] != _processedSongId) {
       _processedSongId = song['id'];
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _updateMiniPlayerColor(song['cover_url']);
+        _updateMiniPlayerColor(song['cover_url']); 
       });
     }
     
-    // SỬA LỖI 3: Logic khi nhấn Tab
     void onTabTapped(int index) {
-      if (index == 3) { // 3 là index của nút "Tạo"
-        _showCreateDialog(context); // Chỉ mở dialog
+      if (index == 3) { 
+        _showCreateDialog(context); 
       } else {
-        setState(() => _selectedIndex = index); // Chuyển tab
+        setState(() {
+          _selectedIndex = index; 
+          _bottomNavIndex = index; 
+        });
       }
     }
-    // --- KẾT THÚC SỬA 3 ---
 
     return Scaffold(
       appBar: _showAppBar
           ? AppBar(
               title: Text(
-                pageTitles[_selectedIndex], // Dùng _selectedIndex (0, 1, hoặc 2)
+                pageTitles[_selectedIndex], 
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
               ),
               backgroundColor: AppColors.darkBackground,
               elevation: 0,
               automaticallyImplyLeading: false,
-              actions: _buildAppBarActions(), // Gọi hàm build actions động
+              actions: _buildAppBarActions(user), // <-- 2. Pass user
             )
           : null, 
       backgroundColor: AppColors.darkBackground,
@@ -327,9 +317,8 @@ class _HomePageState extends State<HomePage> {
             padding: EdgeInsets.only(
               bottom: audioState.currentSong != null ? 70 : 0,
             ),
-            // SỬA LỖI 4: IndexedStack chỉ có 3 con
             child: IndexedStack(
-              index: _selectedIndex,
+              index: _selectedIndex, 
               children: <Widget>[
                 _buildTabNavigator(
                   _navigatorKeys[0], // Key 0
@@ -355,10 +344,8 @@ class _HomePageState extends State<HomePage> {
                     },
                   ),
                 ),
-                // Bỏ child thứ 4 (index 3)
               ],
             ),
-            // --- KẾT THÚC SỬA 4 ---
           ),
           if (audioState.currentSong != null)
             Positioned(
@@ -371,8 +358,8 @@ class _HomePageState extends State<HomePage> {
       ),
 
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: onTabTapped, // Dùng hàm onTabTapped đã sửa
+        currentIndex: _bottomNavIndex, 
+        onTap: onTabTapped, 
         selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey,
         backgroundColor: AppColors.darkBackground,
@@ -387,7 +374,6 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.library_music),
             label: 'Thư viện',
           ),
-          // Thay đổi icon "Tạo" / "X"
           BottomNavigationBarItem(
             icon: Icon(_isCreateDialogOpen ? Icons.close : Icons.add), 
             label: 'Tạo'
@@ -404,11 +390,12 @@ class _HomePageState extends State<HomePage> {
       );
 
   Widget _buildMiniPlayer(BuildContext context, AudioPlayerState audioState) {
-    // ... (Code MiniPlayer giữ nguyên)
     final song = audioState.currentSong;
     if (song == null) return const SizedBox.shrink();
-    final imageUrl = song['cover_url'] ?? '';
-    final isLiked = song['isLiked'] ?? false;
+    
+    final imageUrl = song['cover_url'] ?? ''; 
+    // --- SỬA LỖI: Ép kiểu ID về String để so sánh chính xác ---
+    final songId = song['id'].toString(); 
 
     return GestureDetector(
       onTap: () => _showPlayerPage(context),
@@ -434,14 +421,12 @@ class _HomePageState extends State<HomePage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+                      imageUrl: imageUrl, 
                       width: 45,
                       height: 45,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) =>
-                          Container(color: Colors.grey[850]),
-                      errorWidget: (context, url, error) =>
-                          const Icon(Icons.error),
+                      placeholder: (context, url) => Container(color: Colors.grey[850]),
+                      errorWidget: (context, url, error) => const Icon(Icons.error),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -451,31 +436,41 @@ class _HomePageState extends State<HomePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          song['title']!,
+                          song['title'] ?? '',
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                         Text(
                           buildArtistString(song),
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(
-                      isLiked ? Icons.favorite : Icons.favorite_border,
-                      color: isLiked ? AppColors.primary : Colors.white70,
-                    ),
-                    onPressed: () {},
+                  
+                  // --- NÚT TIM (LIKE) ĐÃ SỬA ---
+                  BlocBuilder<DataBloc, DataState>(
+                    builder: (context, dataState) {
+                      bool isLiked = false;
+                      if (dataState is DataLoaded) {
+                        // So sánh ID String với danh sách String
+                        isLiked = dataState.likedSongIds.contains(songId);
+                      }
+                      return IconButton(
+                        icon: Icon(
+                          isLiked ? Icons.favorite : Icons.favorite_border,
+                          // Đổi màu rõ rệt: Xanh (Primary) hoặc Trắng mờ
+                          color: isLiked ? AppColors.primary : Colors.white70, 
+                        ),
+                        onPressed: () {
+                          context.read<DataBloc>().add(ToggleLikeSong(songId));
+                        },
+                      );
+                    },
                   ),
+                  // -----------------------------
+
                   IconButton(
                     icon: Icon(
                       audioState.isPlaying ? Icons.pause : Icons.play_arrow,
@@ -523,109 +518,109 @@ class _HomePageState extends State<HomePage> {
 }
 
 // --- NỘI DUNG TAB TRANG CHỦ ---
-// (Class HomeTabContent giữ nguyên, không cần sửa)
 class HomeTabContent extends StatelessWidget {
   final Function(bool)? onNavigationChanged;
 
   const HomeTabContent({super.key, this.onNavigationChanged});
 
-  void _showSongOptionsModal(BuildContext context, Map<String, dynamic> song) {
-    // ... (Code bên trong giữ nguyên)
-    final imageUrl = song['cover_url'];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.darkGrey,
-      useRootNavigator: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (modalContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            bool isLiked = song['isLiked'] ?? false;
-            return SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      height: 5,
-                      width: 40,
-                      margin: const EdgeInsets.only(bottom: 16.0),
-                      decoration: BoxDecoration(
-                        color: Colors.grey,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              Container(color: Colors.grey[850]),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.error),
-                        ),
-                      ),
-                      title: Text(
-                        song['title'] ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(buildArtistString(song)),
-                    ),
-                    const Divider(),
-                    ListTile(
-                      leading: Icon(
-                        isLiked ? Icons.favorite : Icons.favorite_border,
-                        color: isLiked ? Colors.greenAccent : null,
-                      ),
-                      title: Text(isLiked ? 'Đã thích' : 'Thích'),
-                      onTap: () {
-                        setModalState(() {
-                          isLiked = !isLiked;
-                        });
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.album),
-                      title: const Text('Xem album'),
-                      onTap: () {},
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.person),
-                      title: const Text('Xem nghệ sĩ'),
-                      onTap: () {},
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.playlist_add),
-                      title: const Text('Thêm vào playlist'),
-                      onTap: () {},
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.queue_music),
-                      title: const Text('Thêm vào danh sách phát'),
-                      onTap: () {},
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.share),
-                      title: const Text('Chia sẻ'),
-                      onTap: () {},
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+  // void _showSongOptionsModal(BuildContext context, Map<String, dynamic> song) {
+  //   final imageUrl = song['cover_url']; // SỬA: Dùng 'cover_url'
+
+  //   showModalBottomSheet(
+  //     context: context,
+  //     backgroundColor: AppColors.darkGrey,
+  //     useRootNavigator: true,
+  //     shape: const RoundedRectangleBorder(
+  //       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  //     ),
+  //     builder: (modalContext) {
+  //       return StatefulBuilder(
+  //         builder: (BuildContext context, StateSetter setModalState) {
+  //           bool isLiked = song['isLiked'] ?? false;
+  //           return SingleChildScrollView(
+  //             child: Padding(
+  //               padding: const EdgeInsets.symmetric(vertical: 16.0),
+  //               child: Column(
+  //                 mainAxisSize: MainAxisSize.min,
+  //                 children: [
+  //                   Container(
+  //                     height: 5,
+  //                     width: 40,
+  //                     margin: const EdgeInsets.only(bottom: 16.0),
+  //                     decoration: BoxDecoration(
+  //                       color: Colors.grey,
+  //                       borderRadius: BorderRadius.circular(10),
+  //                     ),
+  //                   ),
+  //                   ListTile(
+  //                     leading: ClipRRect(
+  //                       borderRadius: BorderRadius.circular(4),
+  //                       child: CachedNetworkImage(
+  //                         imageUrl: imageUrl ?? '', // SỬA
+  //                         width: 50,
+  //                         height: 50,
+  //                         fit: BoxFit.cover,
+  //                         placeholder: (context, url) =>
+  //                             Container(color: Colors.grey[850]),
+  //                         errorWidget: (context, url, error) =>
+  //                             const Icon(Icons.error),
+  //                       ),
+  //                     ),
+  //                     title: Text(
+  //                       song['title'] ?? '',
+  //                       maxLines: 1,
+  //                       overflow: TextOverflow.ellipsis,
+  //                     ),
+  //                     subtitle: Text(buildArtistString(song)),
+  //                   ),
+  //                   const Divider(),
+  //                   // (Các ListTile còn lại giữ nguyên)
+  //                    ListTile(
+  //                     leading: Icon(
+  //                       isLiked ? Icons.favorite : Icons.favorite_border,
+  //                       color: isLiked ? Colors.greenAccent : null,
+  //                     ),
+  //                     title: Text(isLiked ? 'Đã thích' : 'Thích'),
+  //                     onTap: () {
+  //                       setModalState(() {
+  //                         isLiked = !isLiked;
+  //                       });
+  //                     },
+  //                   ),
+  //                   ListTile(
+  //                     leading: const Icon(Icons.album),
+  //                     title: const Text('Xem album'),
+  //                     onTap: () {},
+  //                   ),
+  //                   ListTile(
+  //                     leading: const Icon(Icons.person),
+  //                     title: const Text('Xem nghệ sĩ'),
+  //                     onTap: () {},
+  //                   ),
+  //                   ListTile(
+  //                     leading: const Icon(Icons.playlist_add),
+  //                     title: const Text('Thêm vào playlist'),
+  //                     onTap: () {},
+  //                   ),
+  //                   ListTile(
+  //                     leading: const Icon(Icons.queue_music),
+  //                     title: const Text('Thêm vào danh sách phát'),
+  //                     onTap: () {},
+  //                   ),
+  //                   ListTile(
+  //                     leading: const Icon(Icons.share),
+  //                     title: const Text('Chia sẻ'),
+  //                     onTap: () {},
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //           );
+  //         },
+  //       );
+  //     },
+  //   );
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -644,26 +639,17 @@ class HomeTabContent extends StatelessWidget {
                   
                   const Padding(
                     padding: EdgeInsets.only(left: 20.0, top: 16),
-                    child: Text(
-                      'Playlist theo chủ đề',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: Text('Playlist theo chủ đề', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   ),
                   SizedBox(
                     height: 230,
                     child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       scrollDirection: Axis.horizontal,
                       itemCount: dataState.playlists.length,
                       itemBuilder: (context, index) {
                         final playlist = dataState.playlists[index];
-                        final imageUrl = playlist['cover_url'];
+                        final imageUrl = playlist['cover_url']; // SỬA
                         return GestureDetector(
                           onTap: () {
                             onNavigationChanged?.call(false);
@@ -687,14 +673,12 @@ class HomeTabContent extends StatelessWidget {
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: CachedNetworkImage(
-                                      imageUrl: imageUrl,
+                                      imageUrl: imageUrl ?? '', // SỬA
                                       width: 150,
                                       height: 150,
                                       fit: BoxFit.cover,
-                                      placeholder: (context, url) =>
-                                          Container(color: Colors.grey[850]),
-                                      errorWidget: (context, url, error) =>
-                                          const Icon(Icons.error),
+                                      placeholder: (context, url) => Container(color: Colors.grey[850]),
+                                      errorWidget: (context, url, error) => const Icon(Icons.error),
                                     ),
                                   ),
                                 ),
@@ -704,9 +688,7 @@ class HomeTabContent extends StatelessWidget {
                                   child: Text(
                                     playlist['title'],
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
                                   ),
                                 ),
                               ],
@@ -719,26 +701,17 @@ class HomeTabContent extends StatelessWidget {
 
                   const Padding(
                     padding: EdgeInsets.only(left: 20.0, top: 16),
-                    child: Text(
-                      'Albums',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: Text('Albums', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   ),
                   SizedBox(
                     height: 230,
                     child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       scrollDirection: Axis.horizontal,
                       itemCount: dataState.albums.length,
                       itemBuilder: (context, index) {
                         final album = dataState.albums[index];
-                        final imageUrl = album['cover_url'];
+                        final imageUrl = album['cover_url']; // SỬA
                         return GestureDetector(
                           onTap: () {
                             onNavigationChanged?.call(false);
@@ -762,14 +735,12 @@ class HomeTabContent extends StatelessWidget {
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: CachedNetworkImage(
-                                      imageUrl: imageUrl,
+                                      imageUrl: imageUrl ?? '', // SỬA
                                       width: 150,
                                       height: 150,
                                       fit: BoxFit.cover,
-                                      placeholder: (context, url) =>
-                                          Container(color: Colors.grey[850]),
-                                      errorWidget: (context, url, error) =>
-                                          const Icon(Icons.error),
+                                      placeholder: (context, url) => Container(color: Colors.grey[850]),
+                                      errorWidget: (context, url, error) => const Icon(Icons.error),
                                     ),
                                   ),
                                 ),
@@ -779,19 +750,14 @@ class HomeTabContent extends StatelessWidget {
                                   child: Text(
                                     album['title'],
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
                                   ),
                                 ),
                                 SizedBox(
                                   width: 150,
                                   child: Text(
                                     album['artists']?['name'] ?? 'Không rõ',
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
-                                    ),
+                                    style: const TextStyle(color: Colors.grey, fontSize: 12),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -805,13 +771,7 @@ class HomeTabContent extends StatelessWidget {
                   
                   const Padding(
                     padding: EdgeInsets.only(left: 20.0, top: 10),
-                    child: Text(
-                      'Bài hát',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: Text('Bài hát', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   ),
                   BlocBuilder<AudioPlayerBloc, AudioPlayerState>(
                     builder: (context, audioState) {
@@ -824,8 +784,7 @@ class HomeTabContent extends StatelessWidget {
                         physics: const NeverScrollableScrollPhysics(),
                         itemBuilder: (context, index) {
                           final song = dataState.songs[index];
-                          final imageUrl = song['cover_url'];
-                          
+                          final imageUrl = song['cover_url']; // SỬA
                           final String thisContextId = 'all-songs';
                           
                           final bool isPlayingThisSong =
@@ -837,14 +796,12 @@ class HomeTabContent extends StatelessWidget {
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: CachedNetworkImage(
-                                imageUrl: imageUrl,
+                                imageUrl: imageUrl ?? '', // SỬA
                                 width: 50,
                                 height: 50,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) =>
-                                    Container(color: Colors.grey[850]),
-                                errorWidget: (context, url, error) =>
-                                    const Icon(Icons.error),
+                                placeholder: (context, url) => Container(color: Colors.grey[850]),
+                                errorWidget: (context, url, error) => const Icon(Icons.error),
                               ),
                             ),
                             title: Row(
@@ -869,7 +826,7 @@ class HomeTabContent extends StatelessWidget {
                             subtitle: Text(buildArtistString(song)),
                             trailing: IconButton(
                               icon: const Icon(Icons.more_vert),
-                              onPressed: () => _showSongOptionsModal(context, song),
+                              onPressed: () => showSongOptionsModal(context, song, onNavigationChanged: onNavigationChanged),
                             ),
                             onTap: () => context.read<AudioPlayerBloc>().add(
                               StartPlaying(

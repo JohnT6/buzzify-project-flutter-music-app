@@ -1,7 +1,8 @@
 import 'package:buzzify/common/app_colors.dart';
 import 'package:buzzify/common/app_vectors.dart';
+import 'package:buzzify/pages/forgot_password_page.dart';
 import 'package:buzzify/pages/signup.dart';
-import 'package:buzzify/supabase/auth_controller.dart';
+import 'package:buzzify/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:buzzify/pages/SignUpOrSignIn.dart';
 import 'package:flutter_svg/svg.dart';
@@ -61,6 +62,17 @@ class _SigninPageState extends State<SigninPage> {
         _isLoading = false;
       });
     }
+  }
+
+  void _handleForgotPassword() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        // Truyền email đã nhập (nếu có) sang trang quên mật khẩu
+        builder: (context) => ForgotPasswordPage(
+          initialEmail: _emailController.text.trim(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -142,7 +154,18 @@ class _SigninPageState extends State<SigninPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 25),
+
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, right: 16.0),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _handleForgotPassword,
+                          child: const Text('Quên mật khẩu?'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     CustomElevateButton(
                       title: 'Đăng nhập',
                       onPressed: _handleEmailLogin,

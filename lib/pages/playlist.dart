@@ -1,4 +1,4 @@
-// lib/pages/playlist_page.dart
+// lib/pages/playlist.dart
 import 'package:buzzify/blocs/audio_player/audio_player_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,8 +7,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:ui';
 import 'package:buzzify/common/formatters.dart';
-import 'package:buzzify/services/api_playlist_service.dart'; 
-import 'package:buzzify/widgets/music_visualizer.dart'; 
+import 'package:buzzify/services/api_playlist_service.dart';
+import 'package:buzzify/widgets/music_visualizer.dart';
+import 'package:buzzify/widgets/song_options_modal.dart'; // Import Modal mới
 
 class PlaylistPage extends StatefulWidget {
   final Map<String, dynamic> playlist; 
@@ -60,7 +61,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
         CachedNetworkImageProvider(coverUrl), 
       );
       if (mounted) {
-        setState(() => _dynamicColor = palette.dominantColor?.color ?? AppColors.darkBackground);
+        setState(() => _dynamicColor = palette.mutedColor?.color ?? AppColors.darkBackground,);
       }
     } catch (e) {
       // Giữ màu mặc định
@@ -123,7 +124,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
                       borderRadius: BorderRadius.circular(8),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover),
+                        child: CachedNetworkImage(
+                          imageUrl: coverUrl, 
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => const Icon(Icons.error),
+                        ),
                       ),
                     ),
                   ),
@@ -149,31 +154,64 @@ class _PlaylistPageState extends State<PlaylistPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: 'Lưu playlist', onPressed: () {}),
-                        IconButton(icon: const Icon(Icons.more_vert), tooltip: 'Tùy chọn khác', onPressed: () {}),
-                        const Spacer(),
-                        IconButton(icon: const Icon(Icons.shuffle), tooltip: 'Phát trộn bài', onPressed: () {}),
-                        const SizedBox(width: 8),
-                        FloatingActionButton(
-                          onPressed: () {
-                            if (playlistSongs.isNotEmpty) {
-                              context.read<AudioPlayerBloc>().add(StartPlaying(
-                                playlist: playlistSongs, 
-                                index: 0, 
-                                playlistTitle: playlistData['title'],
-                                contextId: thisContextId,
-                              ));
-                            }
-                          },
-                          backgroundColor: AppColors.primary,
-                          child: const Icon(Icons.play_arrow, size: 30),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ],
+                    BlocBuilder<AudioPlayerBloc, AudioPlayerState>(
+                      builder: (context, audioState) {
+                        final isContextMatch = audioState.contextId == thisContextId;
+                        final isPlaying = isContextMatch && audioState.isPlaying;
+                        final isShuffling = audioState.isShuffling;
+
+                        return Row(
+                          children: [
+                            IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                tooltip: 'Lưu playlist',
+                                onPressed: () {}),
+                            IconButton(
+                                icon: const Icon(Icons.more_vert),
+                                tooltip: 'Tùy chọn khác',
+                                onPressed: () {}),
+                            const Spacer(),
+                            
+                            // NÚT TRỘN BÀI
+                            IconButton(
+                                icon: Icon(
+                                  Icons.shuffle,
+                                  color: isShuffling ? AppColors.primary : Colors.white,
+                                ),
+                                tooltip: 'Phát trộn bài',
+                                onPressed: () {
+                                  context.read<AudioPlayerBloc>().add(ToggleShuffleRequested());
+                                }),
+                            const SizedBox(width: 8),
+                            
+                            // NÚT PHÁT/DỪNG
+                            FloatingActionButton(
+                              onPressed: () {
+                                if (isPlaying) {
+                                  context.read<AudioPlayerBloc>().add(PauseRequested());
+                                } else if (isContextMatch) {
+                                  context.read<AudioPlayerBloc>().add(PlayRequested());
+                                } else {
+                                  if (playlistSongs.isNotEmpty) {
+                                    context.read<AudioPlayerBloc>().add(StartPlaying(
+                                      playlist: playlistSongs,
+                                      index: 0,
+                                      playlistTitle: playlistData['title'],
+                                      contextId: thisContextId,
+                                    ));
+                                  }
+                                }
+                              },
+                              backgroundColor: AppColors.primary,
+                              shape: const CircleBorder(),
+                              child: Icon(
+                                isPlaying ? Icons.pause : Icons.play_arrow, 
+                                size: 30
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -198,7 +236,12 @@ class _PlaylistPageState extends State<PlaylistPage> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                         leading: ClipRRect(
                           borderRadius: BorderRadius.circular(4.0),
-                          child: CachedNetworkImage(imageUrl: songCoverUrl, width: 50, height: 50, fit: BoxFit.cover),
+                          child: CachedNetworkImage(
+                            imageUrl: songCoverUrl, 
+                            width: 50, height: 50, 
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => const Icon(Icons.error),
+                          ),
                         ),
                         
                         title: Row(
@@ -222,10 +265,12 @@ class _PlaylistPageState extends State<PlaylistPage> {
                         ),
                         subtitle: Text(buildArtistString(song)),
                         
-                        // --- SỬA LỖI TẠI ĐÂY ---
-                        // Luôn hiển thị icon 3 chấm, không hiển thị visualizer
-                        trailing: const Icon(Icons.more_vert), 
-                        // --- KẾT THÚC SỬA LỖI ---
+                        // --- SỬA LỖI: Dùng Modal mới ---
+                        trailing: IconButton(
+                          icon: const Icon(Icons.more_vert),
+                          onPressed: () => showSongOptionsModal(context, song), // Truyền đúng context
+                        ),
+                        // -------------------------------
                         
                         onTap: () {
                           context.read<AudioPlayerBloc>().add(StartPlaying(

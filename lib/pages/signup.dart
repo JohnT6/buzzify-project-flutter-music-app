@@ -1,6 +1,6 @@
 import 'package:buzzify/common/app_colors.dart';
 import 'package:buzzify/common/app_vectors.dart';
-import 'package:buzzify/supabase/auth_controller.dart';
+import 'package:buzzify/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:buzzify/pages/SignUpOrSignIn.dart';
